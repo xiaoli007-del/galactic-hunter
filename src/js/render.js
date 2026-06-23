@@ -114,6 +114,8 @@
 
     // —— 飞船 ——
     ship: function (ctx, ship) {
+      var tex = G.Assets && G.Assets.get('ship');
+      if (tex) { this._sprite(ctx, tex, ship.x, ship.y, ship.radius * 2.6, ship.aimAngle + Math.PI / 2, ship.hitFlash > 0); return; }
       ctx.save();
       ctx.translate(ship.x, ship.y);
       ctx.rotate(ship.aimAngle + Math.PI / 2);
@@ -156,6 +158,12 @@
     // —— 外星怪 ——
     alien: function (ctx, a) {
       var def = a.def, r = def.radius, flash = a.hitFlash > 0;
+      var tex = G.Assets && G.Assets.get('alien-' + a.type);
+      if (tex) {
+        this._sprite(ctx, tex, a.x, a.y, r * 2.4, a.angle, flash, def.color);
+        if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
+        return;
+      }
       ctx.save();
       ctx.translate(a.x, a.y); ctx.rotate(a.angle);
       var wob = Math.sin(a.phase) * 0.5 + 0.5;
@@ -248,6 +256,25 @@
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(x - w / 2, y, w, 4);
       ctx.fillStyle = color; ctx.fillRect(x - w / 2, y, w * ratio, 4);
+      ctx.restore();
+    },
+
+    // —— 贴图渲染(发光光晕 + 贴图 + 受击增亮;飞船/怪物通用)——
+    _sprite: function (ctx, tex, x, y, size, angle, flash, glowColor) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, glowColor || '#5ad1ff', 0, 0, size * 0.62, 0.28);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(tex, -size / 2, -size / 2, size, size);
+      if (flash) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(tex, -size / 2, -size / 2, size, size);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
       ctx.restore();
     },
 

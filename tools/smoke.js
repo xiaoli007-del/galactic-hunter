@@ -54,7 +54,7 @@ function pump(ms) {
 
 // —— 顺序加载模块(间接 eval 走全局作用域,使 window 解析正确)——
 const dir = path.join(__dirname, '..', 'src', 'js');
-['config.js', 'platform.js', 'engine.js', 'render.js', 'entities.js', 'game.js'].forEach(function (f) {
+['config.js', 'platform.js', 'engine.js', 'assets.js', 'render.js', 'entities.js', 'game.js'].forEach(function (f) {
   const code = fs.readFileSync(path.join(dir, f), 'utf8');
   (0, eval)(code);
 });

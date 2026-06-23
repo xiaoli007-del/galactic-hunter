@@ -37,6 +37,7 @@
     init: function () {
       this.loadSave();
       this.ship = new Ent.Ship(C);
+      G.Assets && G.Assets.init();        // 异步加载贴图(渐进增强,缺失自动退回程序化)
       G.Platform.init(document.getElementById('stage'));
       E.startLoop(this.update.bind(this), this.render.bind(this));
     },

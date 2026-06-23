@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Galactic Hunter · 贴图预览</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: radial-gradient(120% 80% at 50% 30%, #10131f 0%, #0a0c16 50%, #05060c 100%);
+    color: #cfe4ff; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 16px 48px;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; letter-spacing: .5px; }
+  p.sub { margin: 0 0 18px; color: #6f80a0; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 128px); gap: 16px; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 8px;
+          background: rgba(255,255,255,.02); border: 1px solid rgba(120,160,220,.12);
+          border-radius: 12px; padding: 14px 8px; }
+  .cell canvas, .cell img { width: 128px; height: 128px; image-rendering: pixelated; }
+  .name { font-size: 12px; color: #9fb0c6; }
+  .name b { color: #e6f0ff; font-weight: 600; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+</style>
+</head>
+<body>
+  <h1>银河猎手 · 贴图预览</h1>
+  <p class="sub">程序化生成 · node tools/gen-sprites.js · 缺失时游戏自动回退程序化绘制</p>
+  <div class="grid" id="grid"></div>
+
+<script>
+// 与 config.js 一致的 tier 配色,用于标签色点
+var META = [
+  { key: 'ship',     name: '飞船',   color: '#5ad1ff' },
+  { key: 'alien-t1', name: '爬虫 t1', color: '#8aff80' },
+  { key: 'alien-t2', name: '飞翼 t2', color: '#5ad1ff' },
+  { key: 'alien-t3', name: '蟹甲 t3', color: '#ffd166' },
+  { key: 'alien-t4', name: '幽灵 t4', color: '#c77dff' },
+  { key: 'alien-t5', name: '精英 t5', color: '#ff8a3d' },
+  { key: 'alien-t6', name: 'Boss t6', color: '#ff3d6e' },
+];
+var grid = document.getElementById('grid');
+META.forEach(function (m) {
+  var cell = document.createElement('div'); cell.className = 'cell';
+  var img = document.createElement('img');
+  img.src = '../src/assets/sprites/' + m.key + '.png?v=' + Date.now();
+  cell.appendChild(img);
+  var name = document.createElement('div'); name.className = 'name';
+  name.innerHTML = '<span class="swatch" style="background:' + m.color + '"></span><b>' + m.name + '</b>';
+  cell.appendChild(name);
+  grid.appendChild(cell);
+});
+</script>
+</body>
+</html>
