@@ -1,0 +1,16 @@
+# 部署/平台
+.vercel/
+.vercel.json.bak
+
+# 依赖(本为零依赖项目,保留以防后续引入)
+node_modules/
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+
+# 本地脚本临时产物
+*.local

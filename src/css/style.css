@@ -1,0 +1,22 @@
+/* Galactic Hunter — 样式 */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #05060c;
+}
+body {
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  touch-action: none;          /* 阻止移动端默认手势,避免误触发滚动 */
+  -webkit-tap-highlight-color: transparent;
+}
+#stage {
+  display: block;
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+}
