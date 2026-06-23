@@ -59,8 +59,9 @@
       this._scale = scale;
       this._offsetX = (w - cfg.WIDTH * scale) / 2;
       this._offsetY = (h - cfg.HEIGHT * scale) / 2;
-      // 用 devicePixelRatio 保证清晰
-      var dpr = window.devicePixelRatio || 1;
+      // 用 devicePixelRatio 保证清晰,但限制上限:4K/3x 屏物理像素会翻倍,
+      // 限制到 2 视觉几乎无损却显著降低每帧绘制压力(缓解 PC 卡顿)。
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
       this.canvas.width = w * dpr;
       this.canvas.height = h * dpr;
       this.canvas.style.width = w + 'px';

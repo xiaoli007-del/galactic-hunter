@@ -10,27 +10,19 @@
 
   var Engine = {
 
-    // —— 主循环(固定逻辑步长上限,避免切后台后 dt 暴跳)——
+    // —— 主循环(变步长:每帧按真实 dt 更新,高刷新率屏下子弹位移连续平滑)——
     startLoop: function (update, render) {
       var last = 0;
-      var maxDt = 1 / 20;          // 单帧最大逻辑时间 50ms
-      var target = 1 / G.Config.TARGET_FPS;
-      var acc = 0;
+      var maxDt = 1 / 20;          // 单帧最大逻辑时间 50ms,防切后台后 dt 暴跳
       function frame(now) {
         if (!last) last = now;
         var dt = (now - last) / 1000;
         last = now;
         if (dt > maxDt) dt = maxDt;
-        // 半固定步长:累积到 target 再步进,平滑且确定性可控
-        acc += dt;
-        var steps = 0;
-        while (acc >= target && steps < 5) {
-          update(target);
-          acc -= target;
-          steps++;
-        }
-        // 剩余不足一帧的 acc 不丢弃,用插值因子给 render(本 MVP 简化为整步)
-        render(acc / target);
+        // 变步长:每帧推进一次。60Hz 屏 dt≈1/60,144Hz 屏 dt≈1/144 都平滑更新,
+        // 不再因「逻辑锁 60、渲染 144」导致子弹位移离散、肉眼一顿一顿。
+        update(dt);
+        render(1);
         requestAnimationFrame(frame);
       }
       requestAnimationFrame(frame);

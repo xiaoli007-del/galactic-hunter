@@ -267,6 +267,11 @@
     // ================= 渲染 =================
     render: function (alpha) {
       var ctx = P.ctx;
+      // 先以单位变换铺满整个画布的深空底色,让手机/PC 的 letterbox 留白区与
+      // 游戏画面边缘同色,消除上下黑边的突兀感,视觉接近全屏。
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#05060c';
+      ctx.fillRect(0, 0, P.canvas.width, P.canvas.height);
       // 设置变换:逻辑坐标 → 物理像素(letterbox 居中 + dpr)
       var s = P._scale * P._dpr, ox = P._offsetX * P._dpr, oy = P._offsetY * P._dpr;
       ctx.setTransform(s, 0, 0, s, ox, oy);
