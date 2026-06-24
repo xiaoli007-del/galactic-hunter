@@ -37,6 +37,7 @@
     init: function () {
       this.loadSave();
       this.ship = new Ent.Ship(C);
+      this._syncShipVisual();            // 船舰等级 → 飞船渲染状态(体型/光晕)
       G.Assets && G.Assets.init();        // 异步加载贴图(渐进增强,缺失自动退回程序化)
       G.Platform.init(document.getElementById('stage'));
       E.startLoop(this.update.bind(this), this.render.bind(this));
@@ -47,11 +48,12 @@
       var s = P.getStorage('save') || {};
       this.coins = s.coins != null ? s.coins : C.START.coins;
       this.weaponLevel = s.weaponLevel || C.START.weaponLevel;
+      this.shipLevel = s.shipLevel || C.START.shipLevel;
       this.highScore = s.highScore || 0;
     },
     save: function () {
       P.setStorage('save', {
-        coins: this.coins, weaponLevel: this.weaponLevel, highScore: this.highScore
+        coins: this.coins, weaponLevel: this.weaponLevel, shipLevel: this.shipLevel, highScore: this.highScore
       });
     },
 
@@ -123,12 +125,14 @@
       var n = w.spread, step = 0.12;
       var ox = Math.cos(a) * this.ship.radius * 1.1;
       var oy = Math.sin(a) * this.ship.radius * 1.1;
+      var fireMul = C.SHIPS[this.shipLevel].fireMul;   // 船舰乘区:放大武器单发伤害
+      var dmg = w.damage * fireMul;
       for (var i = 0; i < n; i++) {
         var off = n === 1 ? 0 : (i - (n - 1) / 2) * step;
         var ang = a + off;
         var b = new Ent.Bullet(
           this.ship.x + ox, this.ship.y + oy,
-          Math.cos(ang) * w.speed, Math.sin(ang) * w.speed, w);
+          Math.cos(ang) * w.speed, Math.sin(ang) * w.speed, w, dmg);
         this.bullets.push(b);
       }
     },
@@ -189,7 +193,7 @@
           if (E.circleHit(b, a)) {
             if (!b.hit(a)) continue;          // 已命中过则跳过
             a.takeDamage(b.damage);
-            this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '-' + b.damage, '#fff', 18));
+            this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '-' + Math.round(b.damage), '#fff', 18));
             if (a.dead) this.killAlien(a);
             break;
           }
@@ -263,6 +267,29 @@
       this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '武器升级! ' + C.WEAPONS[next].name, '#7df0c0', 26));
       this.screenFlash = 0.2;
       this.save();
+    },
+
+    upgradeShip: function () {
+      if (this.shipLevel >= C.MAX_SHIP_LEVEL) return;
+      var next = this.shipLevel + 1;
+      var cost = C.SHIPS[next].cost;
+      if (this.coins < cost) {
+        this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '金币不足', '#ff6b6b', 24));
+        return;
+      }
+      this.coins -= cost;
+      this.shipLevel = next;
+      this._syncShipVisual();
+      this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '船舰升级! ' + C.SHIPS[next].name, '#5ad1ff', 26));
+      this.screenFlash = 0.2;
+      this.save();
+    },
+
+    // 同步船舰等级到飞船实体(渲染体型/光晕用)
+    _syncShipVisual: function () {
+      var s = C.SHIPS[this.shipLevel];
+      this.ship.level = this.shipLevel;
+      this.ship.glow = s ? s.glow : '#5ad1ff';
     },
 
     // ================= 渲染 =================
@@ -341,38 +368,49 @@
       }
       ctx.restore();
 
-      // 底栏(升级)
+      // 底栏(升级:武器 / 船舰 双卡片)
       ctx.save();
       ctx.fillStyle = 'rgba(8,12,24,0.7)';
       ctx.fillRect(0, C.HEIGHT - BOT_H, W, BOT_H);
       ctx.strokeStyle = 'rgba(90,209,255,0.4)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, C.HEIGHT - BOT_H); ctx.lineTo(W, C.HEIGHT - BOT_H); ctx.stroke();
-
-      var w = C.WEAPONS[this.weaponLevel];
-      ctx.textAlign = 'left';
-      ctx.fillStyle = w.color; ctx.font = 'bold 22px Arial';
-      ctx.fillText('Lv' + this.weaponLevel + ' ' + w.name, 24, C.HEIGHT - BOT_H + 38);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '13px Arial';
-      ctx.fillText('伤害 ' + w.damage + '  ·  射速 ' + w.fireRate + '/s  ·  弹道 ' + w.spread, 24, C.HEIGHT - BOT_H + 60);
-
-      // 升级按钮
-      var btnW = 240, btnH = 64, btnX = W - btnW - 24, btnY = C.HEIGHT - BOT_H + (BOT_H - btnH) / 2;
-      var maxed = this.weaponLevel >= C.MAX_WEAPON_LEVEL_MVP;
-      var next = this.weaponLevel + 1;
-      var cost = maxed ? 0 : C.WEAPONS[next].cost;
-      var canBuy = !maxed && this.coins >= cost;
-      var label = maxed ? '已满级 (MVP)' : ('升级 ▲ ' + cost);
-      if (this._button(ctx, btnX, btnY, btnW, btnH, label, canBuy || maxed, maxed)) {
-        if (!maxed) this.upgradeWeapon();
-      }
       ctx.restore();
+
+      var top = C.HEIGHT - BOT_H;
+      var fireMul = C.SHIPS[this.shipLevel].fireMul;
+
+      // 武器卡(左)
+      var wDef = C.WEAPONS[this.weaponLevel];
+      var wMaxed = this.weaponLevel >= C.MAX_WEAPON_LEVEL_MVP;
+      var wNext = this.weaponLevel + 1;
+      var wCost = wMaxed ? 0 : C.WEAPONS[wNext].cost;
+      var wCanBuy = !wMaxed && this.coins >= wCost;
+      var effDmg = Math.round(wDef.damage * fireMul);
+      var wStat = '伤害 ' + effDmg + (fireMul > 1 ? ' (×' + fireMul + ')' : '') +
+        '  ·  射速 ' + wDef.fireRate + '/s  ·  弹道 ' + wDef.spread;
+      if (this._upgradeCard(ctx, 24, top, {
+        title: '武器 Lv' + this.weaponLevel + ' ' + wDef.name, stat: wStat, color: wDef.color,
+        maxed: wMaxed, cost: wCost, canBuy: wCanBuy, maxedLabel: '已满级(MVP)'
+      })) this.upgradeWeapon();
+
+      // 船舰卡(右)
+      var sDef = C.SHIPS[this.shipLevel];
+      var sMaxed = this.shipLevel >= C.MAX_SHIP_LEVEL;
+      var sNext = this.shipLevel + 1;
+      var sCost = sMaxed ? 0 : C.SHIPS[sNext].cost;
+      var sCanBuy = !sMaxed && this.coins >= sCost;
+      var sStat = '火力 ×' + sDef.fireMul.toFixed(1) + '  ·  子弹伤害 ' + effDmg;
+      if (this._upgradeCard(ctx, 372, top, {
+        title: '船舰 Lv' + this.shipLevel + ' ' + sDef.name, stat: sStat, color: sDef.glow,
+        maxed: sMaxed, cost: sCost, canBuy: sCanBuy, maxedLabel: '已满级'
+      })) this.upgradeShip();
 
       // FPS 调试显示
       ctx.save();
       ctx.fillStyle = 'rgba(255,255,255,0.3)';
       ctx.font = '12px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText('FPS ' + (this.fps || 0), 24, C.HEIGHT - BOT_H - 10);
+      ctx.fillText('FPS ' + (this.fps || 0), 24, top - 10);
       ctx.restore();
     },
 
@@ -400,7 +438,7 @@
       ctx.fillStyle = 'rgba(255,209,102,0.8)'; ctx.font = 'bold 18px Arial';
       ctx.fillText('最高分  ' + this.highScore, W / 2, by + bh + 40);
       ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '13px Arial';
-      ctx.fillText('v0.1 MVP · AI 协作设计', W / 2, H - 30);
+      ctx.fillText('v0.2 · AI 协作设计', W / 2, H - 30);
       ctx.restore();
     },
 
@@ -423,7 +461,7 @@
       ctx.fillText(this.score, W / 2, H / 2 + 4);
 
       ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '15px Arial';
-      ctx.fillText('累计金币  ' + this.coins + '   ·   武器  Lv' + this.weaponLevel, W / 2, H / 2 + 40);
+      ctx.fillText('累计金币  ' + this.coins + '   ·   武器  Lv' + this.weaponLevel + '   ·   船舰  Lv' + this.shipLevel, W / 2, H / 2 + 40);
       if (this.score >= this.highScore && this.score > 0) {
         ctx.fillStyle = '#ffd166'; ctx.font = 'bold 16px Arial';
         ctx.fillText('★ 新纪录!', W / 2, H / 2 + 66);
@@ -471,6 +509,22 @@
       ctx.arcTo(x, y + h, x, y, r);
       ctx.arcTo(x, y, x + w, y, r);
       ctx.closePath();
+    },
+
+    // —— 升级卡片(武器/船舰通用:标题 + 数值行 + 升级按钮)——
+    _upgradeCard: function (ctx, x, top, o) {
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = o.color; ctx.font = 'bold 20px Arial';
+      ctx.fillText(o.title, x, top + 30);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px Arial';
+      ctx.fillText(o.stat, x, top + 52);
+      ctx.restore();
+
+      var btnW = 220, btnH = 52, btnX = x, btnY = top + 64;
+      var label = o.maxed ? o.maxedLabel : ('升级 ▲ ' + o.cost);
+      var clicked = this._button(ctx, btnX, btnY, btnW, btnH, label, o.canBuy || o.maxed, o.maxed);
+      return clicked && !o.maxed;     // 满级时点击仅消费不升级
     },
   };
 

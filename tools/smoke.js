@@ -115,6 +115,29 @@ const lv2 = Game.weaponLevel;
 Game.upgradeWeapon();
 assert(Game.weaponLevel === lv2, '金币不足时不升级');
 
+console.log('\n[4b] 升级船舰');
+const sb = Game.shipLevel;
+Game.coins = 999999;
+Game.upgradeShip();
+assert(Game.shipLevel === sb + 1 || Game.shipLevel === G.Config.MAX_SHIP_LEVEL,
+  '船舰升级生效 (Lv' + sb + ' → Lv' + Game.shipLevel + ')');
+Game.coins = 0;
+const sb2 = Game.shipLevel;
+Game.upgradeShip();
+assert(Game.shipLevel === sb2, '金币不足时不升级');
+
+console.log('\n[4c] 船舰火力加成接入子弹伤害');
+Game.startGame();
+Game.weaponLevel = 1;                    // 脉冲激光 伤害 1
+Game.shipLevel = 3; Game._syncShipVisual();    // 巡洋舰 fireMul 1.5
+Game.fire(G.Config.WEAPONS[1]);
+const bd = Game.bullets[Game.bullets.length - 1].damage;
+assert(bd === 1.5, '子弹伤害 = 武器伤害 × 船舰 fireMul (got ' + bd + ')');
+Game.shipLevel = 1; Game._syncShipVisual();    // 回退 1.0
+Game.fire(G.Config.WEAPONS[1]);
+const bd2 = Game.bullets[Game.bullets.length - 1].damage;
+assert(bd2 === 1, 'Lv1 船舰无加成 (got ' + bd2 + ')');
+
 console.log('\n[5] 存档写入');
 Game.coins = 12345; Game.save();
 const saved = JSON.parse(lsStore['gh_save']);

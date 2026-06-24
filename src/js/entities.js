@@ -22,6 +22,8 @@
     this.maxHp = cfg.SHIP.maxHp;
     this.hitFlash = 0;
     this.invuln = 0; // 受击后短暂无敌
+    this.level = 1;       // 船舰等级(渲染体型/光晕用,由 Game 同步)
+    this.glow = '#5ad1ff';
   }
   Ship.prototype.update = function (dt) {
     // 炮口跟随指针(手动瞄准)
@@ -40,10 +42,10 @@
   };
 
   // —— 子弹 ——
-  function Bullet(x, y, vx, vy, def) {
+  function Bullet(x, y, vx, vy, def, dmg) {
     this.id = newId();
     this.x = x; this.y = y; this.vx = vx; this.vy = vy;
-    this.damage = def.damage;
+    this.damage = dmg != null ? dmg : def.damage;   // dmg:经船舰乘区放大后的有效伤害
     this.color = def.color;
     this.radius = 5;
     this.pierce = def.pierce;       // 可穿透敌人数

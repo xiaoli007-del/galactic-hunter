@@ -114,16 +114,20 @@
 
     // —— 飞船 ——
     ship: function (ctx, ship) {
+      var lvl = ship.level || 1;
+      var visScale = 1 + (lvl - 1) * 0.06;      // 船舰等级越高体型越大(Lv5≈1.24×;仅视觉,碰撞半径不变)
+      var glowColor = ship.glow || '#5ad1ff';    // 等级光晕色(见 Config.SHIPS[].glow)
       var tex = G.Assets && G.Assets.get('ship');
-      if (tex) { this._sprite(ctx, tex, ship.x, ship.y, ship.radius * 2.6, ship.aimAngle + Math.PI / 2, ship.hitFlash > 0); return; }
+      if (tex) { this._sprite(ctx, tex, ship.x, ship.y, ship.radius * 2.6 * visScale, ship.aimAngle + Math.PI / 2, ship.hitFlash > 0, glowColor); return; }
       ctx.save();
       ctx.translate(ship.x, ship.y);
       ctx.rotate(ship.aimAngle + Math.PI / 2);
+      ctx.scale(visScale, visScale);
       var r = ship.radius, flash = ship.hitFlash > 0;
 
       // 外光晕(发光精灵,lighter)
       ctx.globalCompositeOperation = 'lighter';
-      drawGlow(ctx, '#5ad1ff', 0, 0, r * 2.2, 0.45);
+      drawGlow(ctx, glowColor, 0, 0, r * 2.2, 0.45);
 
       // 引擎尾焰
       var flame = 0.7 + 0.3 * Math.sin(Date.now() / 60);

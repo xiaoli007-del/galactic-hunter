@@ -36,14 +36,16 @@
     },
     MAX_WEAPON_LEVEL_MVP: 3,
 
-    // 船舰/防御(数据预留,v0.2 实装)
+    // 船舰(v0.2 实装:fireMul 作为「乘区」放大武器单发伤害;glow 为飞船等级光晕色)
     SHIPS: {
-      1: { name: '侦察艇',   fireMul: 1.0, cost: 0 },
-      2: { name: '驱逐舰',   fireMul: 1.2, cost: 1500 },
-      3: { name: '巡洋舰',   fireMul: 1.5, cost: 6000 },
-      4: { name: '战列舰',   fireMul: 2.0, cost: 25000 },
-      5: { name: '旗舰',     fireMul: 3.0, cost: 100000 },
+      1: { name: '侦察艇',   fireMul: 1.0, cost: 0,      glow: '#5ad1ff' },
+      2: { name: '驱逐舰',   fireMul: 1.2, cost: 1500,   glow: '#5ad1ff' },
+      3: { name: '巡洋舰',   fireMul: 1.5, cost: 6000,   glow: '#7df0c0' },
+      4: { name: '战列舰',   fireMul: 2.0, cost: 25000,  glow: '#ffd166' },
+      5: { name: '旗舰',     fireMul: 3.0, cost: 100000, glow: '#ff5d8f' },
     },
+    MAX_SHIP_LEVEL: 5,
+    // 防御(数据预留,v0.2 之后实装)
     DEFENSES: {
       1: { name: '基础装甲', shield: 0,  cost: 0 },
       2: { name: '能量护盾', shield: 50, cost: 1000 },
