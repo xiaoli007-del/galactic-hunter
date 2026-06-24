@@ -244,6 +244,38 @@ assert(Game.killCount === bossKillBefore + 1, 'Boss 击杀计入击杀数 (kill 
 assert(Game.texts.length > bossTxtBefore, 'Boss 击杀产生庆祝飘字');
 assert(Game.texts.length > bossTxtBefore, 'Boss 击杀产生庆祝飘字');
 
+console.log('\n[4k] 怪物特殊行为 — T4 幽灵闪现回避');
+var wraith = new G.Entities.Alien('t4', G.Config.WIDTH / 2, 300);
+assert(wraith.behavior === 'blink', 't4 标记 blink 行为');
+var wB = G.Config.BEHAVIOR;
+wB.blinkChance = 1;                      // 强制必定闪现
+wB.blinkDist = 100;
+var x0 = wraith.x, y0 = wraith.y;
+wraith.takeDamage(1);                     // 受击未死(hp5→4)→ 触发闪现
+assert(wraith.hp === 4, '闪现不阻止伤害结算 (hp 5 → 4)');
+var moved = Math.hypot(wraith.x - x0, wraith.y - y0);
+assert(moved > 50, '闪现位移生效 (距离 ' + moved.toFixed(0) + ')');
+// 闪现冷却期内再受击不触发
+var x1 = wraith.x, y1 = wraith.y;
+wraith.takeDamage(1);
+assert(Math.hypot(wraith.x - x1, wraith.y - y1) < 1, '冷却期内不再闪现');
+wB.blinkChance = 0.35;                   // 复位
+
+console.log('\n[4l] 怪物特殊行为 — T5 精灵螺旋 + 冲刺');
+var elite = new G.Entities.Alien('t5', G.Config.WIDTH / 2, 200);
+assert(elite.behavior === 'spiral', 't5 标记 spiral 行为');
+var ex0 = elite.x, ey0 = elite.y;
+elite.update(0.3);                        // 螺旋推进:位置应变化(非直线下移)
+assert(Math.hypot(elite.x - ex0, elite.y - ey0) > 0, '精灵螺旋移动生效');
+// 冲刺:sprintTimer 归零后 update 应进入冲刺(spiralDash>0)
+elite.spiralTimer = 0; elite.spiralDash = 0;
+elite.update(0.05);
+assert(elite.spiralDash > 0, '精灵触发冲刺 (spiralDash ' + elite.spiralDash.toFixed(2) + ')');
+// 精灵仍可被正常击杀(takeDamage 走标准路径)
+var eHp = elite.hp;
+elite.takeDamage(5);
+assert(elite.hp === eHp - 5, '精灵可被正常伤害 (hp ' + eHp + ' → ' + elite.hp + ')');
+
 console.log('\n[5] 存档写入');
 Game.coins = 12345; Game.save();
 const saved = JSON.parse(lsStore['gh_save']);

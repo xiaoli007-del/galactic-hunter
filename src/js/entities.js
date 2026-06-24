@@ -133,6 +133,13 @@
     this.summonTimer = 0;      // 召唤倒计时
     this.dashTimer = 0;        // 冲刺倒计时
     this.dashing = 0;          // 冲刺剩余秒数(>0 时冲刺中)
+    // 特殊行为(v0.3):def.behavior
+    this.behavior = def.behavior || null;
+    this.blinkCd = 0;          // 幽灵闪现冷却(防连击)
+    this.spiralPhase = Math.random() * Math.PI * 2;   // 精灵螺旋相位
+    this.spiralTimer = 0;      // 精灵冲刺倒计时
+    this.spiralDash = 0;       // 精灵冲刺剩余
+    this._spiralCx = x; this._spiralCy = y;           // 螺旋中心(随下移)
   }
   Alien.prototype.update = function (dt) {
     this.phase += dt * 6;
@@ -182,7 +189,43 @@
       }
     }
 
-    // 朝下移动 + 横向摆动
+    // 闪现冷却递减
+    if (this.blinkCd > 0) this.blinkCd -= dt;
+
+    // T5 精英:螺旋推进 + 周期冲刺(替代直线下移)
+    if (this.behavior === 'spiral') {
+      var SB = G.Config.BEHAVIOR;
+      this._spiralCy += speed * dt;                    // 螺旋中心匀速下移
+      this.spiralPhase += dt * 2.4;                    // 旋转
+      this.spiralTimer -= dt;
+      if (this.spiralDash <= 0 && this.spiralTimer <= 0) {
+        this.spiralDash = SB.spiralDashDur;
+        this.spiralTimer = SB.spiralDashEvery;
+      }
+      if (this.spiralDash > 0) {
+        // 冲刺:朝飞船方向高速直冲
+        var ddx = 0, ddy = 1;
+        if (G.Game && G.Game.ship) {
+          var ex = G.Game.ship.x - this.x, ey = G.Game.ship.y - this.y;
+          var el = Math.hypot(ex, ey) || 1; ddx = ex / el; ddy = ey / el;
+        }
+        this.x += ddx * speed * SB.spiralDashMul * dt;
+        this.y += ddy * speed * SB.spiralDashMul * dt;
+        this.spiralDash -= dt;
+        this.angle = Math.atan2(ddy, ddx) - Math.PI / 2;
+      } else {
+        // 螺旋:绕下移中心做圆周
+        this.x = this._spiralCx + Math.cos(this.spiralPhase) * SB.spiralRadius;
+        this.y = this._spiralCy + Math.sin(this.spiralPhase) * SB.spiralRadius;
+        this.angle = this.spiralPhase + Math.PI / 2;
+      }
+      // 中心 x 缓慢漂移,避免螺旋全贴中轴
+      this._spiralCx += Math.sin(this.wob) * 18 * dt;
+      if (this.y > G.Config.HEIGHT + 80) this.escaped = true;
+      return;
+    }
+
+    // 朝下移动 + 横向摆动(默认行为)
     var targetX = G.Config.WIDTH / 2 + this.driftX + Math.sin(this.wob) * 80;
     var dx = targetX - this.x, dy = (G.Config.HEIGHT + 60) - this.y;
     var len = Math.hypot(dx, dy) || 1;
@@ -195,7 +238,22 @@
   Alien.prototype.takeDamage = function (dmg) {
     this.hp -= dmg;
     this.hitFlash = 0.08;
-    if (this.hp <= 0) this.dead = true;
+    if (this.hp <= 0) { this.dead = true; return; }
+    // T4 幽灵闪现回避:受击未死时概率瞬移,闪现期间 cd 内不再触发
+    if (this.behavior === 'blink' && this.blinkCd <= 0) {
+      var B = G.Config.BEHAVIOR;
+      if (Math.random() < B.blinkChance) {
+        var ang = Math.random() * Math.PI * 2;
+        this.x += Math.cos(ang) * B.blinkDist;
+        this.y += Math.sin(ang) * B.blinkDist;
+        // 边界约束,不飞出屏幕
+        var W = G.Config.WIDTH, H = G.Config.HEIGHT;
+        this.x = Math.max(this.radius, Math.min(W - this.radius, this.x));
+        this.y = Math.max(-20, Math.min(H - this.radius, this.y));
+        this.hitFlash = 0.12;
+      }
+      this.blinkCd = 0.6;
+    }
   };
 
   // —— 粒子 ——

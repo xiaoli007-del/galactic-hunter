@@ -62,13 +62,23 @@
     MAX_DEFENSE_LEVEL: 5,
 
     // 外星怪物(对应 GDD §4.1)。spawnWeight 控制刷新概率。
+    //   behavior = 特殊行为(v0.3):t4 幽灵闪现回避、t5 精英螺旋冲刺
     ALIENS: {
-      t1: { name: '爬虫',   tier: 1, hp: 1,   score: 10,   coin: 2,   radius: 18, speed: 95,  spawnWeight: 40, color: '#8aff80' },
-      t2: { name: '飞翼',   tier: 2, hp: 3,   score: 30,   coin: 5,   radius: 24, speed: 70,  spawnWeight: 25, color: '#5ad1ff' },
-      t3: { name: '蟹甲',   tier: 3, hp: 8,   score: 80,   coin: 15,  radius: 34, speed: 48,  spawnWeight: 18, color: '#ffd166' },
-      t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff' },
-      t5: { name: '精英',   tier: 5, hp: 20,  score: 300,  coin: 60,  radius: 40, speed: 60,  spawnWeight: 5,  color: '#ff8a3d' },
-      t6: { name: 'Boss',   tier: 6, hp: 100, score: 1500, coin: 300, radius: 70, speed: 38,  spawnWeight: 2,  color: '#ff3d6e' },
+      t1: { name: '爬虫',   tier: 1, hp: 1,   score: 10,   coin: 2,   radius: 18, speed: 95,  spawnWeight: 40, color: '#8aff80', behavior: null },
+      t2: { name: '飞翼',   tier: 2, hp: 3,   score: 30,   coin: 5,   radius: 24, speed: 70,  spawnWeight: 25, color: '#5ad1ff', behavior: null },
+      t3: { name: '蟹甲',   tier: 3, hp: 8,   score: 80,   coin: 15,  radius: 34, speed: 48,  spawnWeight: 18, color: '#ffd166', behavior: null },
+      t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff', behavior: 'blink' },   // 受击概率闪现回避
+      t5: { name: '精英',   tier: 5, hp: 20,  score: 300,  coin: 60,  radius: 40, speed: 60,  spawnWeight: 5,  color: '#ff8a3d', behavior: 'spiral' },    // 螺旋移动 + 周期冲刺
+      t6: { name: 'Boss',   tier: 6, hp: 100, score: 1500, coin: 300, radius: 70, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null },
+    },
+    // 特殊行为数值(v0.3)
+    BEHAVIOR: {
+      blinkChance: 0.35,      // 幽灵受击时闪现概率
+      blinkDist: 130,         // 闪现位移
+      spiralRadius: 120,      // 精英螺旋半径
+      spiralDashEvery: 2.5,   // 精英冲刺间隔
+      spiralDashDur: 0.5,     // 精灵冲刺持续
+      spiralDashMul: 2.6,     // 精灵冲刺速度倍率
     },
 
     // 波次:随时间提升高等级怪权重。难度档每 30s 一档。
