@@ -94,6 +94,12 @@
       this.pointer.justPressed = false;
     },
 
+    // 单调时钟(秒),用于音效节流等;无 performance 时退回 Date 毫秒
+    _now: function () {
+      var p = window.performance && window.performance.now ? window.performance.now() / 1000 : Date.now() / 1000;
+      return p;
+    },
+
     // —— 本地存储(抽象,移植小游戏换实现)——
     getStorage: function (key) {
       try {
@@ -104,6 +110,60 @@
     setStorage: function (key, value) {
       try { window.localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); }
       catch (e) { /* 存储满或禁用时静默 */ }
+    },
+
+    // —— 音频(Web Audio API 程序化合成,无音频文件;移植小游戏换 wx.createInnerAudioContext)——
+    // 渐进增强:无 AudioContext(node 环境/旧浏览器)时静默 no-op,不影响运行。
+    audio: {
+      _ctx: null,
+      _enabled: true,
+      // AudioContext 必须在用户交互后创建(浏览器策略),故懒加载;首调 play 时建。
+      _ctxGet: function () {
+        if (this._ctx) return this._ctx;
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        try { this._ctx = new AC(); } catch (e) { this._ctx = null; }
+        return this._ctx;
+      },
+      setEnabled: function (on) { this._enabled = on; },
+      isEnabled: function () { return this._enabled; },
+      // 基础原语:一个带 ADSR 包络的振荡音(freq 赫兹,dur 秒,type 波形,vol 音量,slideTo 频率扫向)
+      tone: function (freq, dur, type, vol, slideTo) {
+        if (!this._enabled) return;
+        var ctx = this._ctxGet();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }  // 首次交互后唤醒
+        var t0 = ctx.currentTime;
+        var osc = ctx.createOscillator();
+        var g = ctx.createGain();
+        osc.type = type || 'square';
+        osc.frequency.setValueAtTime(freq, t0);
+        if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+        var v = vol == null ? 0.18 : vol;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(v, t0 + 0.008);     // 起音
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);   // 释放
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(t0); osc.stop(t0 + dur + 0.02);
+      },
+      // 噪声爆裂(击杀/爆炸用):白噪声经短包络
+      noise: function (dur, vol) {
+        if (!this._enabled) return;
+        var ctx = this._ctxGet();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+        var t0 = ctx.currentTime;
+        var n = Math.floor(ctx.sampleRate * dur);
+        var buf = ctx.createBuffer(1, n, ctx.sampleRate);
+        var data = buf.getChannelData(0);
+        for (var i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);  // 衰减白噪
+        var src = ctx.createBufferSource(); src.buffer = buf;
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(vol == null ? 0.16 : vol, t0);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        src.connect(g); g.connect(ctx.destination);
+        src.start(t0); src.stop(t0 + dur);
+      },
     },
   };
 

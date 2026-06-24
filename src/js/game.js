@@ -7,7 +7,7 @@
  */
 (function (G) {
   'use strict';
-  var E = G.Engine, P = G.Platform, C = G.Config, R = G.Render, Ent = G.Entities;
+  var E = G.Engine, P = G.Platform, C = G.Config, R = G.Render, Ent = G.Entities, Snd = null;
 
   var STATE = { MENU: 'menu', PLAYING: 'playing', GAMEOVER: 'gameover' };
 
@@ -40,6 +40,7 @@
       this._syncShipVisual();            // 船舰等级 → 飞船渲染状态(体型/光晕)
       this._applyDefense();              // 防御等级 → 护盾充能/复活状态
       G.Assets && G.Assets.init();        // 异步加载贴图(渐进增强,缺失自动退回程序化)
+      G.Sound && G.Sound.init(); Snd = G.Sound;  // 音效(无 AudioContext 则 no-op)
       G.Platform.init(document.getElementById('stage'));
       E.startLoop(this.update.bind(this), this.render.bind(this));
     },
@@ -135,6 +136,7 @@
 
     // —— 开火 ——
     fire: function (w) {
+      Snd && Snd.play('fire');
       var a = this.ship.aimAngle;
       var n = w.spread, step = 0.12;
       var ox = Math.cos(a) * this.ship.radius * 1.1;
@@ -166,6 +168,7 @@
         this.spawnAlien(tier, 't6');
         this._bossSpawned = true;
         this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ BOSS 出现', '#ff3d6e', 36));
+        Snd && Snd.play('boss');
       }
       if (this.killCount % C.WAVE.bossEveryKills !== 0) this._bossSpawned = false;
     },
@@ -208,7 +211,7 @@
             if (!b.hit(a)) continue;          // 已命中过则跳过
             a.takeDamage(b.damage);
             this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '-' + Math.round(b.damage), '#fff', 18));
-            if (a.dead) this.killAlien(a);
+            if (a.dead) { this.killAlien(a); Snd && Snd.play('kill'); }
             break;
           }
         }
@@ -219,10 +222,12 @@
         if (al.dead) continue;
         if (E.circleHit(al, this.ship)) {
           if (this.ship.takeHit()) {
+            Snd && Snd.play('hit');
             // 反射力场(Lv3):护盾格吸收命中时概率反弹,反伤=武器有效伤害×倍率
             if (this.ship.lastHitShielded && this.ship.reflectChance > 0 &&
                 Math.random() < this.ship.reflectChance) {
               this._reflectAt(al);
+              Snd && Snd.play('reflect');
             }
             this.explode(al.x, al.y, al.def.color, 18);
             this.screenFlash = 0.35;
@@ -260,6 +265,7 @@
         this.explode(a.x, a.y, a.def.color, 40);
         this.screenFlash = 0.5;
         this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '★ BOSS 击破!', '#ffd166', 40));
+        Snd && Snd.play('bossKill');
       }
     },
 
@@ -307,6 +313,7 @@
       });
       if (gained > 0) {
         this.coins += gained;
+        Snd && Snd.play('coin');
         this.save();
       }
     },
@@ -323,7 +330,7 @@
       this.coins -= cost;
       this.weaponLevel = next;
       this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '武器升级! ' + C.WEAPONS[next].name, '#7df0c0', 26));
-      this.screenFlash = 0.2;
+      this.screenFlash = 0.2; Snd && Snd.play('upgrade');
       this.save();
     },
 
@@ -339,7 +346,7 @@
       this.shipLevel = next;
       this._syncShipVisual();
       this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '船舰升级! ' + C.SHIPS[next].name, '#5ad1ff', 26));
-      this.screenFlash = 0.2;
+      this.screenFlash = 0.2; Snd && Snd.play('upgrade');
       this.save();
     },
 
@@ -362,7 +369,7 @@
       this.defenseLevel = next;
       this._applyDefense();
       this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '防御升级! ' + C.DEFENSES[next].name, '#c77dff', 26));
-      this.screenFlash = 0.2;
+      this.screenFlash = 0.2; Snd && Snd.play('upgrade');
       this.save();
     },
 
@@ -444,6 +451,20 @@
       ctx.fillStyle = '#fff'; ctx.font = 'bold 34px Arial';
       ctx.fillText(this.coins, W - 24, 72);
       ctx.restore();
+
+      // 音效开关(右上角小图标)
+      var sndOn = P.audio.isEnabled();
+      var sbX = W - 44, sbY = 8, sbS = 32;
+      if (this._button(ctx, sbX, sbY, sbS, sbS, sndOn ? '♪' : '✕', true, true)) {
+        P.audio.setEnabled(!sndOn);
+      }
+      if (!sndOn) {  // 静音时图标变暗提示
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,107,107,0.7)';
+        ctx.font = '10px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('静音', sbX + sbS / 2, sbY + sbS + 10);
+        ctx.restore();
+      }
 
       // 血量(中部小飞船图标)
       ctx.save();
