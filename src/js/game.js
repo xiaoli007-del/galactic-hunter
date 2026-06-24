@@ -255,6 +255,32 @@
         this.coinsArr.push(new Ent.Coin(a.x + E.rand(-10, 10), a.y + E.rand(-10, 10), Math.ceil(a.def.coin / drops)));
       }
       this.texts.push(new Ent.FloatingText(a.x, a.y, '+' + a.def.score, a.def.color, a.def.tier >= 5 ? 30 : 22));
+      // Boss 击杀:更大爆炸 + 胜利飘字
+      if (a.isBoss) {
+        this.explode(a.x, a.y, a.def.color, 40);
+        this.screenFlash = 0.5;
+        this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '★ BOSS 击破!', '#ffd166', 40));
+      }
+    },
+
+    // —— Boss 多阶段回调(v0.3)——
+    _onBossStage: function (boss, stage) {
+      if (stage === 2) this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2 - 80, '⚠ BOSS 狂暴', '#ff8a3d', 30));
+      else if (stage === 3) this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2 - 80, '⚠ BOSS 暴怒!', '#ff3d6e', 32));
+      this.screenFlash = 0.3;
+    },
+    // Boss 召唤小怪:在 Boss 周边生成,受同屏上限约束
+    _bossSummon: function (boss) {
+      var B = C.BOSS;
+      if (this.aliens.length >= C.WAVE.maxAliensOnScreen) return;
+      for (var i = 0; i < B.summonCount; i++) {
+        if (this.aliens.length >= C.WAVE.maxAliensOnScreen) break;
+        var ang = (i / B.summonCount) * Math.PI * 2;
+        this.aliens.push(new Ent.Alien(B.summonType,
+          boss.x + Math.cos(ang) * (boss.radius + 20),
+          boss.y + Math.sin(ang) * (boss.radius + 20)));
+      }
+      this.texts.push(new Ent.FloatingText(boss.x, boss.y - boss.radius, '召唤!', '#c77dff', 20));
     },
 
     explode: function (x, y, color, n) {

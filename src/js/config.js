@@ -77,8 +77,21 @@
       spawnIntervalBase: 1.1,    // 初始刷新间隔
       spawnIntervalMin: 0.35,    // 最快刷新间隔
       spawnIntervalDecay: 0.92,  // 每档刷新间隔衰减
-      bossEveryKills: 60,        // 每 N 击杀触发 Boss(MVP 简化)
+      bossEveryKills: 60,        // 每 N 击杀触发 Boss
       maxAliensOnScreen: 26,
+    },
+
+    // Boss(t6)多阶段(v0.3):血量阈值触发阶段切换,每阶段强化行为
+    BOSS: {
+      stage2HpRatio: 0.66,   // hp ≤ 66% 进入阶段 2(狂暴)
+      stage3HpRatio: 0.33,   // hp ≤ 33% 进入阶段 3(暴怒)
+      speedMul:  { 1: 1.0, 2: 1.4, 3: 1.9 },   // 各阶段移速倍率
+      summonEvery: { 2: 3.5, 3: 2.2 },          // 召唤间隔(秒);阶段 1 不召唤
+      summonType: 't2',                          // 召唤的小怪
+      summonCount: 2,                            // 每次召唤数量
+      dashEvery: 2.8,                            // 阶段 3 冲刺间隔(秒)
+      dashSpeedMul: 4.5,                         // 冲刺速度倍率
+      dashDuration: 0.6,                         // 冲刺持续(秒)
     },
 
     // 起始与持久化

@@ -127,17 +127,67 @@
     // 运动目标:朝向屏幕下方区域(飞船方向),带横向漂移
     this.driftX = (Math.random() - 0.5) * 60;
     this.wob = Math.random() * Math.PI * 2;
+    // Boss 多阶段(v0.3):仅 t6 启用
+    this.isBoss = def.tier === 6;
+    this.bossStage = 1;        // 1/2/3 阶段
+    this.summonTimer = 0;      // 召唤倒计时
+    this.dashTimer = 0;        // 冲刺倒计时
+    this.dashing = 0;          // 冲刺剩余秒数(>0 时冲刺中)
   }
   Alien.prototype.update = function (dt) {
     this.phase += dt * 6;
     this.wob += dt * 2;
     if (this.hitFlash > 0) this.hitFlash -= dt;
+
+    var speed = this.speed;
+    if (this.isBoss) {
+      var B = G.Config.BOSS;
+      // 阶段切换(按 hp 比例)
+      var ratio = this.hp / this.maxHp;
+      var newStage = ratio > B.stage2HpRatio ? 1 : (ratio > B.stage3HpRatio ? 2 : 3);
+      if (newStage !== this.bossStage) {
+        this.bossStage = newStage;
+        if (G.Game) G.Game._onBossStage(this, newStage);
+      }
+      speed *= B.speedMul[this.bossStage] || 1;
+      // 召唤小怪(阶段 ≥ 2)
+      if (this.bossStage >= 2) {
+        this.summonTimer -= dt;
+        if (this.summonTimer <= 0) {
+          this.summonTimer = B.summonEvery[this.bossStage];
+          if (G.Game) G.Game._bossSummon(this);
+        }
+      }
+      // 阶段 3 冲刺:朝飞船方向瞬时高速位移
+      if (this.bossStage >= 3) {
+        this.dashTimer -= dt;
+        if (this.dashing <= 0 && this.dashTimer <= 0) {
+          this.dashing = B.dashDuration;
+          this.dashTimer = B.dashEvery;
+          this._dashDx = 0; this._dashDy = 1;   // 默认向下,Game 可在召唤时校正方向
+          if (G.Game && G.Game.ship) {
+            var sdx = G.Game.ship.x - this.x, sdy = G.Game.ship.y - this.y;
+            var sl = Math.hypot(sdx, sdy) || 1;
+            this._dashDx = sdx / sl; this._dashDy = sdy / sl;
+          }
+        }
+      }
+      if (this.dashing > 0) {
+        this.x += this._dashDx * speed * B.dashSpeedMul * dt;
+        this.y += this._dashDy * speed * B.dashSpeedMul * dt;
+        this.dashing -= dt;
+        this.angle = Math.atan2(this._dashDy, this._dashDx) - Math.PI / 2;
+        if (this.y > G.Config.HEIGHT + 80) this.escaped = true;
+        return;
+      }
+    }
+
     // 朝下移动 + 横向摆动
     var targetX = G.Config.WIDTH / 2 + this.driftX + Math.sin(this.wob) * 80;
     var dx = targetX - this.x, dy = (G.Config.HEIGHT + 60) - this.y;
     var len = Math.hypot(dx, dy) || 1;
-    this.x += (dx / len) * this.speed * dt;
-    this.y += (dy / len) * this.speed * dt;
+    this.x += (dx / len) * speed * dt;
+    this.y += (dy / len) * speed * dt;
     this.angle = Math.atan2(dy, dx) - Math.PI / 2; // 造型朝运动方向
     if (this.y > G.Config.HEIGHT + 80) this.escaped = true;
   };

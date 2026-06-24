@@ -218,6 +218,32 @@ const hp3 = probe3.hp;
 Game.collisions();
 assert(probe3.hp === hp3 - 0.6, '弱反弹仍对怪造成伤害 (hp ' + hp3 + ' → ' + probe3.hp + ')');
 
+console.log('\n[4j] Boss 多阶段');
+Game.startGame();
+var boss = new G.Entities.Alien('t6', G.Config.WIDTH / 2, 200);
+assert(boss.isBoss === true, 't6 标记为 Boss');
+assert(boss.bossStage === 1, '初始阶段 1');
+// 阶段 2:hp ≤ 66%(=66)
+boss.takeDamage(34);                      // 100 → 66, ratio 0.66, 进入阶段 2
+boss.update(0.02);                        // 触发阶段切换检测
+assert(boss.bossStage === 2, 'hp≤66% 进入狂暴阶段 2 (hp ' + boss.hp + ')');
+// 阶段 3:hp ≤ 33%(=33)
+boss.takeDamage(33);                      // 66 → 33, ratio 0.33, 进入阶段 3
+boss.update(0.02);
+assert(boss.bossStage === 3, 'hp≤33% 进入暴怒阶段 3 (hp ' + boss.hp + ')');
+// 召唤:阶段 3 summonEvery 2.2s,推进应产生小怪
+var aliensBefore = Game.aliens.length;
+Game.aliens.push(boss);
+boss.summonTimer = 0;
+boss.update(2.3);                         // 越过召唤间隔
+assert(Game.aliens.length > aliensBefore, 'Boss 阶段 3 召唤小怪 (aliens ' + aliensBefore + ' → ' + Game.aliens.length + ')');
+// Boss 击杀奖励:killAlien 走特殊爆炸 + 飘字
+var bossKillBefore = Game.killCount, bossTxtBefore = Game.texts.length;
+Game.killAlien(boss);
+assert(Game.killCount === bossKillBefore + 1, 'Boss 击杀计入击杀数 (kill ' + bossKillBefore + ' → ' + Game.killCount + ')');
+assert(Game.texts.length > bossTxtBefore, 'Boss 击杀产生庆祝飘字');
+assert(Game.texts.length > bossTxtBefore, 'Boss 击杀产生庆祝飘字');
+
 console.log('\n[5] 存档写入');
 Game.coins = 12345; Game.save();
 const saved = JSON.parse(lsStore['gh_save']);
