@@ -144,13 +144,62 @@ Game.fire(G.Config.WEAPONS[1]);
 const bd2 = Game.bullets[Game.bullets.length - 1].damage;
 assert(bd2 === 1, 'Lv1 船舰无加成 (got ' + bd2 + ')');
 
+console.log('\n[4e] 升级防御');
+const db = Game.defenseLevel;
+Game.coins = 999999;
+Game.upgradeDefense();
+assert(Game.defenseLevel === db + 1 || Game.defenseLevel === G.Config.MAX_DEFENSE_LEVEL,
+  '防御升级生效 (Lv' + db + ' → Lv' + Game.defenseLevel + ')');
+Game.coins = 0;
+const db2 = Game.defenseLevel;
+Game.upgradeDefense();
+assert(Game.defenseLevel === db2, '金币不足时不升级');
+
+console.log('\n[4f] 护盾吸收(受击消格不扣血)');
+Game.startGame();
+Game.defenseLevel = 2; Game._applyDefense();   // 能量护盾 1 格
+Game.ship.invuln = 0;
+const hp0 = Game.ship.hp, sh0 = Game.ship.shield;
+Game.ship.takeHit();
+assert(Game.ship.shield === sh0 - 1, '护盾消一格 (shield ' + sh0 + ' → ' + Game.ship.shield + ')');
+assert(Game.ship.hp === hp0, '血量未受影响 (hp ' + hp0 + ')');
+// 格尽后受击才扣血
+Game.ship.invuln = 0;
+Game.ship.takeHit();
+assert(Game.ship.hp === hp0 - 1, '护盾耗尽后扣血 (hp ' + hp0 + ' → ' + Game.ship.hp + ')');
+
+console.log('\n[4g] 护盾自动回充(Lv4 快速)');
+Game.startGame();
+Game.defenseLevel = 4; Game._applyDefense();   // 量子护盾 3 格,regenDelay 4s
+Game.ship.shield = 0; Game.ship.shieldRegenTimer = 0.1;
+Game.ship.update(0.2);
+assert(Game.ship.shield === 1, '回充一格 (shield → ' + Game.ship.shield + ')');
+
+console.log('\n[4h] 不灭屏障复活(Lv5)');
+Game.startGame();
+Game.defenseLevel = 5; Game._applyDefense();   // 不灭屏障,revive
+Game.ship.shield = 0;                          // 跗空护盾,模拟已耗尽 → 下一击走扣血
+Game.ship.hp = 1; Game.ship.invuln = 0;
+Game.ship.takeHit();                            // hp → 0
+assert(Game.ship.hp === 0, '护盾耗尽后 hp 归零');
+const revived = Game.ship.revive();
+assert(revived === true, 'Lv5 可复活一次');
+assert(Game.ship.hp === Game.ship.maxHp, '复活回满血 (hp ' + Game.ship.hp + ')');
+assert(Game.ship.revivesLeft === 0, '复活次数 -1 (剩 ' + Game.ship.revivesLeft + ')');
+assert(Game.ship.revive() === false, '复活次数用尽后不可再复活');
+
+// 渲染冒烟:防御 Lv5 时跑一帧 drawHUD,校验护盾指示 + 防御卡渲染无异常(无 ctx 则 no-op)
+pump(120);
+assert(true, '防御 Lv5 HUD 渲染路径执行无异常');
+
 console.log('\n[5] 存档写入');
 Game.coins = 12345; Game.save();
 const saved = JSON.parse(lsStore['gh_save']);
 assert(saved.coins === 12345, '存档正确写入 (' + saved.coins + ')');
 
 console.log('\n[6] 死亡结算');
-Game.ship.hp = 1;
+Game.defenseLevel = 1; Game._applyDefense();   // 回基础装甲(无护盾/复活),确保可死亡
+Game.ship.hp = 1; Game.ship.invuln = 0; Game.ship.shield = 0;
 // 撞一个怪测试 takeHit → 死亡
 const a = new G.Entities.Alien('t6', Game.ship.x, Game.ship.y - 5);
 Game.aliens.push(a);

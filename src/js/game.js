@@ -22,8 +22,8 @@
     coins: 0,
     highScore: 0,
     weaponLevel: 1,
-    shipLevel: 1,      // 预留
-    defenseLevel: 1,   // 预留
+    shipLevel: 1,      // 船舰等级(乘区)
+    defenseLevel: 1,   // 防御等级(充能护盾)
 
     ship: null,
     bullets: [], aliens: [], particles: [], coinsArr: [], texts: [],
@@ -38,6 +38,7 @@
       this.loadSave();
       this.ship = new Ent.Ship(C);
       this._syncShipVisual();            // 船舰等级 → 飞船渲染状态(体型/光晕)
+      this._applyDefense();              // 防御等级 → 护盾充能/复活状态
       G.Assets && G.Assets.init();        // 异步加载贴图(渐进增强,缺失自动退回程序化)
       G.Platform.init(document.getElementById('stage'));
       E.startLoop(this.update.bind(this), this.render.bind(this));
@@ -49,11 +50,12 @@
       this.coins = s.coins != null ? s.coins : C.START.coins;
       this.weaponLevel = s.weaponLevel || C.START.weaponLevel;
       this.shipLevel = s.shipLevel || C.START.shipLevel;
+      this.defenseLevel = s.defenseLevel || C.START.defenseLevel;
       this.highScore = s.highScore || 0;
     },
     save: function () {
       P.setStorage('save', {
-        coins: this.coins, weaponLevel: this.weaponLevel, shipLevel: this.shipLevel, highScore: this.highScore
+        coins: this.coins, weaponLevel: this.weaponLevel, shipLevel: this.shipLevel, defenseLevel: this.defenseLevel, highScore: this.highScore
       });
     },
 
@@ -72,6 +74,10 @@
       this.ship.hp = this.ship.maxHp;
       this.ship.hitFlash = 0;
       this.ship.invuln = 1.0;
+      // 防御线:每局重置护盾充能 + 复活次数(等级本身持久化,消耗是单局的)
+      this.ship.shield = this.ship.maxShield;
+      this.ship.shieldRegenTimer = this.ship.shieldRegenDelay;
+      this.ship.revivesLeft = this.ship.canRevive ? 1 : 0;
     },
 
     gameOver: function () {
@@ -116,7 +122,15 @@
       this.collisions();
       this.cleanup();
 
-      if (this.ship.hp <= 0) this.gameOver();
+      // 防御线:hp 归零先尝试不灭屏障复活,复活失败才结算
+      if (this.ship.hp <= 0) {
+        if (this.ship.revive()) {
+          this.screenFlash = 0.5;
+          this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '★ 护盾过载! 复活', '#ffd166', 34));
+        } else {
+          this.gameOver();
+        }
+      }
     },
 
     // —— 开火 ——
@@ -292,6 +306,34 @@
       this.ship.glow = s ? s.glow : '#5ad1ff';
     },
 
+    upgradeDefense: function () {
+      if (this.defenseLevel >= C.MAX_DEFENSE_LEVEL) return;
+      var next = this.defenseLevel + 1;
+      var cost = C.DEFENSES[next].cost;
+      if (this.coins < cost) {
+        this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '金币不足', '#ff6b6b', 24));
+        return;
+      }
+      this.coins -= cost;
+      this.defenseLevel = next;
+      this._applyDefense();
+      this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 60, '防御升级! ' + C.DEFENSES[next].name, '#c77dff', 26));
+      this.screenFlash = 0.2;
+      this.save();
+    },
+
+    // 同步防御等级到飞船实体:护盾上限/回充/复活能力;并按等级补满当前护盾
+    _applyDefense: function () {
+      var d = C.DEFENSES[this.defenseLevel];
+      this.ship.maxShield = d.charges;
+      this.ship.shieldRegenDelay = d.regenDelay;
+      this.ship.defenseGlow = d.glow;
+      this.ship.canRevive = d.revive;
+      this.ship.shield = d.charges;                       // 升级时即时补满
+      this.ship.shieldRegenTimer = d.regenDelay;
+      this.ship.revivesLeft = d.revive ? 1 : 0;
+    },
+
     // ================= 渲染 =================
     render: function (alpha) {
       var ctx = P.ctx;
@@ -368,7 +410,22 @@
       }
       ctx.restore();
 
-      // 底栏(升级:武器 / 船舰 双卡片)
+      // 护盾充能(防御线):HP 下方一行小菱形,有格才画
+      if (this.ship.maxShield > 0) {
+        ctx.save();
+        var sdN = this.ship.maxShield, dw = 13, dgap = 5;
+        var sx = W / 2 - (sdN * (dw + dgap) - dgap) / 2;
+        for (var si = 0; si < sdN; si++) {
+          ctx.fillStyle = si < this.ship.shield ? this.ship.defenseGlow : 'rgba(120,160,200,0.18)';
+          var cx = sx + si * (dw + dgap) + dw / 2, cy = 66;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 6, cy);
+          ctx.lineTo(cx, cy + 7); ctx.lineTo(cx - 6, cy); ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // 底栏(升级:武器 / 船舰 / 防御 三卡片)
       ctx.save();
       ctx.fillStyle = 'rgba(8,12,24,0.7)';
       ctx.fillRect(0, C.HEIGHT - BOT_H, W, BOT_H);
@@ -378,8 +435,9 @@
 
       var top = C.HEIGHT - BOT_H;
       var fireMul = C.SHIPS[this.shipLevel].fireMul;
+      var cardW = 220, xs = [14, 250, 486];   // 三卡片 x(居中、间隔 16)
 
-      // 武器卡(左)
+      // 武器卡
       var wDef = C.WEAPONS[this.weaponLevel];
       var wMaxed = this.weaponLevel >= C.MAX_WEAPON_LEVEL;
       var wNext = this.weaponLevel + 1;
@@ -387,24 +445,39 @@
       var wCanBuy = !wMaxed && this.coins >= wCost;
       var effDmg = Math.round(wDef.damage * fireMul);
       var wStat = '伤害 ' + effDmg + (fireMul > 1 ? ' (×' + fireMul + ')' : '') +
-        '  ·  射速 ' + wDef.fireRate + '/s  ·  弹道 ' + wDef.spread +
-        (wDef.pierce > 0 ? '  ·  穿透 ' + wDef.pierce : '');
-      if (this._upgradeCard(ctx, 24, top, {
-        title: '武器 Lv' + this.weaponLevel + ' ' + wDef.name, stat: wStat, color: wDef.color,
+        '  ·  ' + wDef.fireRate + '/s  ·  ' + (wDef.pierce > 0 ? '穿透 ' + wDef.pierce : '弹道 ' + wDef.spread);
+      if (this._upgradeCard(ctx, xs[0], top, {
+        w: cardW, title: '武器 Lv' + this.weaponLevel + ' ' + wDef.name, stat: wStat, color: wDef.color,
         maxed: wMaxed, cost: wCost, canBuy: wCanBuy, maxedLabel: '已满级'
       })) this.upgradeWeapon();
 
-      // 船舰卡(右)
+      // 船舰卡
       var sDef = C.SHIPS[this.shipLevel];
       var sMaxed = this.shipLevel >= C.MAX_SHIP_LEVEL;
       var sNext = this.shipLevel + 1;
       var sCost = sMaxed ? 0 : C.SHIPS[sNext].cost;
       var sCanBuy = !sMaxed && this.coins >= sCost;
-      var sStat = '火力 ×' + sDef.fireMul.toFixed(1) + '  ·  子弹伤害 ' + effDmg;
-      if (this._upgradeCard(ctx, 372, top, {
-        title: '船舰 Lv' + this.shipLevel + ' ' + sDef.name, stat: sStat, color: sDef.glow,
+      var sStat = '火力 ×' + sDef.fireMul.toFixed(1) + '  ·  伤害 ' + effDmg;
+      if (this._upgradeCard(ctx, xs[1], top, {
+        w: cardW, title: '船舰 Lv' + this.shipLevel + ' ' + sDef.name, stat: sStat, color: sDef.glow,
         maxed: sMaxed, cost: sCost, canBuy: sCanBuy, maxedLabel: '已满级'
       })) this.upgradeShip();
+
+      // 防御卡
+      var dDef = C.DEFENSES[this.defenseLevel];
+      var dMaxed = this.defenseLevel >= C.MAX_DEFENSE_LEVEL;
+      var dNext = this.defenseLevel + 1;
+      var dCost = dMaxed ? 0 : C.DEFENSES[dNext].cost;
+      var dCanBuy = !dMaxed && this.coins >= dCost;
+      var dPerks = [];
+      if (dDef.charges > 0) dPerks.push(dDef.charges + '格');
+      if (dDef.regenDelay > 0 && dDef.regenDelay <= 5) dPerks.push('自动回复');
+      if (dDef.revive) dPerks.push('复活');
+      var dStat = dDef.charges > 0 ? ('护盾 ' + dPerks.join(' · ')) : '无护盾 · 受击扣血';
+      if (this._upgradeCard(ctx, xs[2], top, {
+        w: cardW, title: '防御 Lv' + this.defenseLevel + ' ' + dDef.name, stat: dStat, color: dDef.glow,
+        maxed: dMaxed, cost: dCost, canBuy: dCanBuy, maxedLabel: '已满级'
+      })) this.upgradeDefense();
 
       // FPS 调试显示
       ctx.save();
@@ -430,7 +503,7 @@
       ctx.fillStyle = '#c77dff'; ctx.font = '28px Arial';
       ctx.fillText('银 河 猎 手', W / 2, H / 2 - 70);
       ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '16px Arial';
-      ctx.fillText('驾驶飞船 · 射击外星怪物 · 升级武器', W / 2, H / 2 - 30);
+      ctx.fillText('驾驶飞船 · 射击外星怪物 · 三线养成', W / 2, H / 2 - 30);
       ctx.fillText('移动指针瞄准 · 点击或按住开火', W / 2, H / 2 - 6);
 
       var bw = 280, bh = 76, bx = W / 2 - bw / 2, by = H / 2 + 40;
@@ -439,7 +512,7 @@
       ctx.fillStyle = 'rgba(255,209,102,0.8)'; ctx.font = 'bold 18px Arial';
       ctx.fillText('最高分  ' + this.highScore, W / 2, by + bh + 40);
       ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '13px Arial';
-      ctx.fillText('v0.2 · AI 协作设计', W / 2, H - 30);
+      ctx.fillText('v0.2.2 · AI 协作设计', W / 2, H - 30);
       ctx.restore();
     },
 
@@ -462,7 +535,7 @@
       ctx.fillText(this.score, W / 2, H / 2 + 4);
 
       ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '15px Arial';
-      ctx.fillText('累计金币  ' + this.coins + '   ·   武器  Lv' + this.weaponLevel + '   ·   船舰  Lv' + this.shipLevel, W / 2, H / 2 + 40);
+      ctx.fillText('累计金币  ' + this.coins + '   ·   武器  Lv' + this.weaponLevel + '   ·   船舰  Lv' + this.shipLevel + '   ·   防御  Lv' + this.defenseLevel, W / 2, H / 2 + 40);
       if (this.score >= this.highScore && this.score > 0) {
         ctx.fillStyle = '#ffd166'; ctx.font = 'bold 16px Arial';
         ctx.fillText('★ 新纪录!', W / 2, H / 2 + 66);
@@ -516,13 +589,13 @@
     _upgradeCard: function (ctx, x, top, o) {
       ctx.save();
       ctx.textAlign = 'left';
-      ctx.fillStyle = o.color; ctx.font = 'bold 20px Arial';
-      ctx.fillText(o.title, x, top + 30);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '12px Arial';
-      ctx.fillText(o.stat, x, top + 52);
+      ctx.fillStyle = o.color; ctx.font = 'bold 18px Arial';
+      ctx.fillText(o.title, x, top + 28);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '11px Arial';
+      ctx.fillText(o.stat, x, top + 48);
       ctx.restore();
 
-      var btnW = 220, btnH = 52, btnX = x, btnY = top + 64;
+      var btnW = o.w || 220, btnH = 46, btnX = x, btnY = top + 58;
       var label = o.maxed ? o.maxedLabel : ('升级 ▲ ' + o.cost);
       var clicked = this._button(ctx, btnX, btnY, btnW, btnH, label, o.canBuy || o.maxed, o.maxed);
       return clicked && !o.maxed;     // 满级时点击仅消费不升级

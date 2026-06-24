@@ -45,14 +45,20 @@
       5: { name: '旗舰',     fireMul: 3.0, cost: 100000, glow: '#ff5d8f' },
     },
     MAX_SHIP_LEVEL: 5,
-    // 防御(数据预留,v0.2 之后实装)
+    // 防御(v0.2.2 实装:充能护盾 + 特效,忠实 GDD §4.4)
+    //   charges   = 护盾充能数(每次受击消 1 格,格尽才扣 hp)
+    //   regenDelay= 回充一格所需秒数(短 CD 回充;Lv4/5 自动回复 = 更快)
+    //   revive    = Lv5 不灭屏障:每局死亡复活一次
+    //   shield    = GDD §4.4 原始数值(留档,玩法用 charges)
+    //   glow      = HUD 护盾指示色
     DEFENSES: {
-      1: { name: '基础装甲', shield: 0,  cost: 0 },
-      2: { name: '能量护盾', shield: 50, cost: 1000 },
-      3: { name: '反射力场', shield: 100, cost: 5000 },
-      4: { name: '量子护盾', shield: 200, cost: 20000 },
-      5: { name: '不灭屏障', shield: 500, cost: 80000 },
+      1: { name: '基础装甲', shield: 0,   cost: 0,     charges: 0, regenDelay: 0,  revive: false, glow: '#8aa0b5' },
+      2: { name: '能量护盾', shield: 50,  cost: 1000,   charges: 1, regenDelay: 8,  revive: false, glow: '#5ad1ff' },
+      3: { name: '反射力场', shield: 100, cost: 5000,   charges: 2, regenDelay: 7,  revive: false, glow: '#7df0c0' },
+      4: { name: '量子护盾', shield: 200, cost: 20000,  charges: 3, regenDelay: 4,  revive: false, glow: '#c77dff' },  // 自动回复
+      5: { name: '不灭屏障', shield: 500, cost: 80000,  charges: 3, regenDelay: 4,  revive: true,  glow: '#ffd166' },  // 复活1次/局
     },
+    MAX_DEFENSE_LEVEL: 5,
 
     // 外星怪物(对应 GDD §4.1)。spawnWeight 控制刷新概率。
     ALIENS: {

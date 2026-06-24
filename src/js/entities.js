@@ -24,6 +24,14 @@
     this.invuln = 0; // 受击后短暂无敌
     this.level = 1;       // 船舰等级(渲染体型/光晕用,由 Game 同步)
     this.glow = '#5ad1ff';
+    // 防御线:充能护盾(由 Game._applyDefense 按防御等级写入)
+    this.maxShield = 0;          // 护盾格上限(充能数)
+    this.shield = 0;             // 当前护盾格
+    this.shieldRegenDelay = 0;   // 回充一格所需秒(0 = 不回复)
+    this.shieldRegenTimer = 0;   // 回充倒计时
+    this.defenseGlow = '#5ad1ff';// HUD 护盾指示色
+    this.canRevive = false;      // Lv5 不灭屏障:本局可复活一次
+    this.revivesLeft = 0;        // 剩余复活次数(每局重置)
   }
   Ship.prototype.update = function (dt) {
     // 炮口跟随指针(手动瞄准)
@@ -31,13 +39,37 @@
     this.aimAngle = Math.atan2(p.y - this.y, p.x - this.x);
     if (this.hitFlash > 0) this.hitFlash -= dt;
     if (this.invuln > 0) this.invuln -= dt;
+    // 护盾自动回充(防御线):有格上限、未满、且配了回充间隔才计
+    if (this.maxShield > 0 && this.shield < this.maxShield && this.shieldRegenDelay > 0) {
+      this.shieldRegenTimer -= dt;
+      if (this.shieldRegenTimer <= 0) {
+        this.shield++;
+        this.shieldRegenTimer = this.shieldRegenDelay;
+      }
+    }
   };
   Ship.prototype.draw = function (ctx) { G.Render.ship(ctx, this); };
   Ship.prototype.takeHit = function () {
     if (this.invuln > 0) return false;
-    this.hp -= 1;
+    if (this.shield > 0) {            // 护盾吸收:消一格,不扣 hp
+      this.shield--;
+    } else {                          // 护盾耗尽:扣血
+      this.hp -= 1;
+    }
     this.hitFlash = 0.18;
     this.invuln = 0.7;
+    this.shieldRegenTimer = this.shieldRegenDelay;  // 受击重置回充倒计时
+    return true;
+  };
+  // 不灭屏障复活:hp 归零时若还有复活次数,回满血/护盾并返回 true
+  Ship.prototype.revive = function () {
+    if (!this.canRevive || this.revivesLeft <= 0) return false;
+    this.revivesLeft--;
+    this.hp = this.maxHp;
+    this.shield = this.maxShield;
+    this.shieldRegenTimer = this.shieldRegenDelay;
+    this.hitFlash = 0.3;
+    this.invuln = 2.0;     // 复活后长无敌,防止立即再死
     return true;
   };
 
