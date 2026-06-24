@@ -219,12 +219,30 @@
         if (al.dead) continue;
         if (E.circleHit(al, this.ship)) {
           if (this.ship.takeHit()) {
+            // 反射力场(Lv3):护盾格吸收命中时概率反弹,反伤=武器有效伤害×倍率
+            if (this.ship.lastHitShielded && this.ship.reflectChance > 0 &&
+                Math.random() < this.ship.reflectChance) {
+              this._reflectAt(al);
+            }
             this.explode(al.x, al.y, al.def.color, 18);
             this.screenFlash = 0.35;
             al.dead = true;
           }
         }
       }
+    },
+
+    // 反射力场反伤:对怪物造成反弹伤害,可能直接击杀并走掉落链路
+    _reflectAt: function (alien) {
+      var w = C.WEAPONS[this.weaponLevel];
+      var fireMul = C.SHIPS[this.shipLevel].fireMul;
+      var dmg = w.damage * fireMul * this.ship.reflectDmgMul;
+      if (dmg <= 0) return;
+      // 反弹特效:从飞船射向怪物的能量弧 + 反伤飘字
+      this.texts.push(new Ent.FloatingText(alien.x, alien.y - alien.def.radius,
+        '↩' + Math.round(dmg), '#7df0c0', 20));
+      alien.takeDamage(dmg);
+      if (alien.dead) this.killAlien(alien);
     },
 
     killAlien: function (a) {
@@ -329,6 +347,8 @@
       this.ship.shieldRegenDelay = d.regenDelay;
       this.ship.defenseGlow = d.glow;
       this.ship.canRevive = d.revive;
+      this.ship.reflectChance = d.reflectChance || 0;
+      this.ship.reflectDmgMul = d.reflectDmgMul || 0;
       this.ship.shield = d.charges;                       // 升级时即时补满
       this.ship.shieldRegenTimer = d.regenDelay;
       this.ship.revivesLeft = d.revive ? 1 : 0;

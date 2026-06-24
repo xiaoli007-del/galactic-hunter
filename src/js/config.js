@@ -51,10 +51,11 @@
     //   revive    = Lv5 不灭屏障:每局死亡复活一次
     //   shield    = GDD §4.4 原始数值(留档,玩法用 charges)
     //   glow      = HUD 护盾指示色
+    //   reflectChance / reflectDmgMul = Lv3 反射力场:护盾格吸收命中时概率反弹(reflectDmgMul 放大武器有效伤害)
     DEFENSES: {
-      1: { name: '基础装甲', shield: 0,   cost: 0,     charges: 0, regenDelay: 0,  revive: false, glow: '#8aa0b5' },
-      2: { name: '能量护盾', shield: 50,  cost: 1000,   charges: 1, regenDelay: 8,  revive: false, glow: '#5ad1ff' },
-      3: { name: '反射力场', shield: 100, cost: 5000,   charges: 2, regenDelay: 7,  revive: false, glow: '#7df0c0' },
+      1: { name: '基础装甲', shield: 0,   cost: 0,     charges: 0, regenDelay: 0,  revive: false, glow: '#8aa0b5', reflectChance: 0,   reflectDmgMul: 0 },
+      2: { name: '能量护盾', shield: 50,  cost: 1000,   charges: 1, regenDelay: 8,  revive: false, glow: '#5ad1ff', reflectChance: 0,   reflectDmgMul: 0 },
+      3: { name: '反射力场', shield: 100, cost: 5000,   charges: 2, regenDelay: 7,  revive: false, glow: '#7df0c0', reflectChance: 0.5, reflectDmgMul: 0.6 },
       4: { name: '量子护盾', shield: 200, cost: 20000,  charges: 3, regenDelay: 4,  revive: false, glow: '#c77dff' },  // 自动回复
       5: { name: '不灭屏障', shield: 500, cost: 80000,  charges: 3, regenDelay: 4,  revive: true,  glow: '#ffd166' },  // 复活1次/局
     },

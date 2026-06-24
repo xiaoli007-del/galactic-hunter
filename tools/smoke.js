@@ -192,6 +192,32 @@ assert(Game.ship.revive() === false, '复活次数用尽后不可再复活');
 pump(120);
 assert(true, '防御 Lv5 HUD 渲染路径执行无异常');
 
+console.log('\n[4i] 反射力场反弹(Lv3,护盾吸收时反伤)');
+Game.startGame();
+Game._syncShipVisual();
+Game.defenseLevel = 3; Game._applyDefense();             // 反射力场:reflectChance 0.5, mul 0.6
+Game.ship.reflectChance = 1;                             // 强制 100% 反弹以做确定性断言
+// 强力武器 + 旗舰船舰:反伤 6×3×0.6=10.8,一击反杀 t1(hp1)并走 killAlien 掉落链路
+Game.weaponLevel = 5; Game.shipLevel = 5; Game._syncShipVisual();
+var probe2 = new G.Entities.Alien('t1', Game.ship.x, Game.ship.y - 5);
+Game.aliens.push(probe2);
+Game.ship.invuln = 0;                                     // 清除开局无敌,确保 takeHit 生效
+const hpBefore = probe2.hp, shieldBefore = Game.ship.shield, killBefore = Game.killCount;
+Game.collisions();                                       // 碰撞 → 护盾消 → 反弹击杀 → killAlien
+assert(probe2.hp <= 0, '反弹伤害致死 (hp ' + hpBefore + ' → ' + probe2.hp + ')');
+assert(probe2.dead === true, '怪物被反弹击杀');
+assert(Game.ship.shield === shieldBefore - 1, '反弹仍消耗一格护盾 (shield ' + shieldBefore + ' → ' + Game.ship.shield + ')');
+assert(Game.killCount === killBefore + 1, '反弹击杀计入击杀/掉落 (kill ' + killBefore + ' → ' + Game.killCount + ')');
+// 弱反弹(低倍率)不致死时,飞船仍碾死怪物但不计 killAlien —— 验证反射反伤本身生效
+Game.startGame();
+Game.weaponLevel = 1; Game.shipLevel = 1; Game._syncShipVisual();
+Game.defenseLevel = 3; Game._applyDefense(); Game.ship.reflectChance = 1;
+var probe3 = new G.Entities.Alien('t3', Game.ship.x, Game.ship.y - 5);  // 蟹甲 hp8:反伤 0.6 不死
+Game.aliens.push(probe3); Game.ship.invuln = 0;
+const hp3 = probe3.hp;
+Game.collisions();
+assert(probe3.hp === hp3 - 0.6, '弱反弹仍对怪造成伤害 (hp ' + hp3 + ' → ' + probe3.hp + ')');
+
 console.log('\n[5] 存档写入');
 Game.coins = 12345; Game.save();
 const saved = JSON.parse(lsStore['gh_save']);

@@ -32,6 +32,10 @@
     this.defenseGlow = '#5ad1ff';// HUD 护盾指示色
     this.canRevive = false;      // Lv5 不灭屏障:本局可复活一次
     this.revivesLeft = 0;        // 剩余复活次数(每局重置)
+    // 反射力场(Lv3):护盾格吸收命中时概率反弹
+    this.reflectChance = 0;     // 反弹概率(0 = 无反射)
+    this.reflectDmgMul = 0;     // 反弹伤害 = 武器有效伤害 × 此倍率
+    this.lastHitShielded = false; // 上次 takeHit 是否被护盾吸收(collision 读此决定是否反弹)
   }
   Ship.prototype.update = function (dt) {
     // 炮口跟随指针(手动瞄准)
@@ -53,8 +57,10 @@
     if (this.invuln > 0) return false;
     if (this.shield > 0) {            // 护盾吸收:消一格,不扣 hp
       this.shield--;
+      this.lastHitShielded = true;
     } else {                          // 护盾耗尽:扣血
       this.hp -= 1;
+      this.lastHitShielded = false;
     }
     this.hitFlash = 0.18;
     this.invuln = 0.7;
