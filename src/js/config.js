@@ -26,7 +26,7 @@
       maxHp: 3,              // 受击次数(每次撞击/接触扣1,MVP 用 hp 制)
     },
 
-    // 武器(对应 GDD §4.2)。MVP 解锁到 Lv3,Lv4/Lv5 数据先配好。
+    // 武器(对应 GDD §4.2)。Lv1–Lv5 全等级实装(v0.2 解锁满级,按金币逐级升级)。
     WEAPONS: {
       1: { name: '脉冲激光',  damage: 1, fireRate: 4.0, spread: 1, speed: 900,  color: '#5ad1ff', cost: 0,     pierce: 0 },
       2: { name: '双联激光',  damage: 1, fireRate: 6.0, spread: 2, speed: 940,  color: '#7df0c0', cost: 500,   pierce: 0 },
@@ -34,7 +34,7 @@
       4: { name: '散射波',    damage: 2, fireRate: 3.0, spread: 3, speed: 780,  color: '#ffd166', cost: 8000,  pierce: 0 },
       5: { name: '量子湮灭',  damage: 6, fireRate: 5.0, spread: 1, speed: 1000, color: '#ff5d8f', cost: 30000, pierce: 3 },
     },
-    MAX_WEAPON_LEVEL_MVP: 3,
+    MAX_WEAPON_LEVEL: 5,
 
     // 船舰(v0.2 实装:fireMul 作为「乘区」放大武器单发伤害;glow 为飞船等级光晕色)
     SHIPS: {

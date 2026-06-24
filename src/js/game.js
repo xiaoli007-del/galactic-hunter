@@ -255,7 +255,7 @@
 
     // —— 升级 ——
     upgradeWeapon: function () {
-      if (this.weaponLevel >= C.MAX_WEAPON_LEVEL_MVP) return;
+      if (this.weaponLevel >= C.MAX_WEAPON_LEVEL) return;
       var next = this.weaponLevel + 1;
       var cost = C.WEAPONS[next].cost;
       if (this.coins < cost) {
@@ -381,16 +381,17 @@
 
       // 武器卡(左)
       var wDef = C.WEAPONS[this.weaponLevel];
-      var wMaxed = this.weaponLevel >= C.MAX_WEAPON_LEVEL_MVP;
+      var wMaxed = this.weaponLevel >= C.MAX_WEAPON_LEVEL;
       var wNext = this.weaponLevel + 1;
       var wCost = wMaxed ? 0 : C.WEAPONS[wNext].cost;
       var wCanBuy = !wMaxed && this.coins >= wCost;
       var effDmg = Math.round(wDef.damage * fireMul);
       var wStat = '伤害 ' + effDmg + (fireMul > 1 ? ' (×' + fireMul + ')' : '') +
-        '  ·  射速 ' + wDef.fireRate + '/s  ·  弹道 ' + wDef.spread;
+        '  ·  射速 ' + wDef.fireRate + '/s  ·  弹道 ' + wDef.spread +
+        (wDef.pierce > 0 ? '  ·  穿透 ' + wDef.pierce : '');
       if (this._upgradeCard(ctx, 24, top, {
         title: '武器 Lv' + this.weaponLevel + ' ' + wDef.name, stat: wStat, color: wDef.color,
-        maxed: wMaxed, cost: wCost, canBuy: wCanBuy, maxedLabel: '已满级(MVP)'
+        maxed: wMaxed, cost: wCost, canBuy: wCanBuy, maxedLabel: '已满级'
       })) this.upgradeWeapon();
 
       // 船舰卡(右)

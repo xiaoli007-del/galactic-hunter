@@ -107,13 +107,19 @@ console.log('\n[4] 升级武器');
 const before = Game.weaponLevel;
 Game.coins = 999999;
 Game.upgradeWeapon();
-assert(Game.weaponLevel === before + 1 || Game.weaponLevel === G.Config.MAX_WEAPON_LEVEL_MVP,
+assert(Game.weaponLevel === before + 1 || Game.weaponLevel === G.Config.MAX_WEAPON_LEVEL,
   '武器升级生效 (Lv' + before + ' → Lv' + Game.weaponLevel + ')');
 // 金币不足分支
 Game.coins = 0;
 const lv2 = Game.weaponLevel;
 Game.upgradeWeapon();
 assert(Game.weaponLevel === lv2, '金币不足时不升级');
+
+console.log('\n[4d] 武器满级解锁 Lv1→Lv5');
+Game.weaponLevel = 1; Game.coins = 999999;
+for (let i = 0; i < 10; i++) Game.upgradeWeapon();
+assert(Game.weaponLevel === G.Config.MAX_WEAPON_LEVEL, '武器可升满级 Lv' + Game.weaponLevel + '/' + G.Config.MAX_WEAPON_LEVEL);
+assert(G.Config.MAX_WEAPON_LEVEL === 5, '满级 Lv5(散射波/量子湮灭 解锁)');
 
 console.log('\n[4b] 升级船舰');
 const sb = Game.shipLevel;
