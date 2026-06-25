@@ -361,7 +361,7 @@ assert(Game.state === 'gameover', 'closeLeaderboard 原路返回 gameover');
 Game.openLeaderboard(); pump(120); Game.closeLeaderboard();
 assert(true, '排行榜渲染路径执行无异常');
 
-console.log('\n[8] 飞船跟随指针 + 自动锁敌(v0.5)');
+console.log('\n[8] 飞船左右跟随指针 + 炮口固定朝上(v0.7)');
 Game.startGame();
 Game.activeSkill = null;
 var ship0x = Game.ship.x, ship0y = Game.ship.y;
@@ -378,18 +378,17 @@ assert(Game.ship.y === G.Config.SHIP.y, '指针在顶部时飞船 y 仍固定 (y
 // 左右边界:指针超出右边,飞船贴边不越界
 P.pointer.x = 99999; Game.ship.update(1.0);
 assert(Game.ship.x === G.Config.WIDTH - Game.ship.radius, '右边界钳制 (x ' + Game.ship.x.toFixed(0) + ')');
-// 自动锁敌:在场怪在 aimRange 内,炮口应指向它而非指针
+// v0.7:炮口固定朝上(经典纵向射击),不再自动锁敌 —— 有敌、无敌、指针任意位置,炮口恒朝上
 Game.aliens.length = 0;
 var aimTarget = new G.Entities.Alien('t1', Game.ship.x + 100, Game.ship.y - 200);
 Game.aliens.push(aimTarget);
 Game.ship._aliens = Game.aliens;
 Game.ship.update(0.02);
-var angToTarget = Math.atan2(aimTarget.y - Game.ship.y, aimTarget.x - Game.ship.x);
-assert(Math.abs(Game.ship.aimAngle - angToTarget) < 0.1, '炮口自动锁定最近敌人');
-// 无目标时退回朝指针
+assert(Math.abs(Game.ship.aimAngle - (-Math.PI / 2)) < 0.01, '炮口固定朝上(有敌也不锁)');
+// 无目标同样朝上
 Game.aliens.length = 0;
 Game.ship.update(0.02);
-assert(Game.aliens.length === 0, '清场后无锁定目标');
+assert(Math.abs(Game.ship.aimAngle - (-Math.PI / 2)) < 0.01, '无目标炮口仍朝上');
 
 console.log('\n[9] 技能系统:拾取持久生效 + 弹道/特效(v0.5)');
 // 无技能时用武器默认 spread(1)
@@ -425,7 +424,7 @@ Game.powerups.length = 0;
 Game.bullets.length = 0;
 var pu = new G.Entities.PowerUp('ice', Game.ship.x, Game.ship.y - 80);
 Game.powerups.push(pu);
-Game.fire(G.Config.WEAPONS[1]);         // 朝胶囊方向(自动锁敌无目标→朝指针,这里子弹已生成)
+Game.fire(G.Config.WEAPONS[1]);         // 炮口固定朝上发射(胶囊在飞船正上方,子弹朝上 → 即将命中)
 // 把子弹挪到胶囊上确保命中
 Game.bullets[0].x = pu.x; Game.bullets[0].y = pu.y;
 Game.collisions();

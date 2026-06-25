@@ -51,10 +51,10 @@
       this.y = SH.y;                                     // 固定底部
     }
 
-    // 炮口自动锁最近敌人;无目标或目标超出 aimRange 则朝指针方向。
-    var target = this._findTarget();
-    if (target) this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
-    else this.aimAngle = Math.atan2(p.y - this.y, p.x - this.x);
+    // v0.7:炮口固定朝上(经典纵向射击)。移除自动锁敌 —— 飞船只左右走位躲弹,
+    // 子弹直线上射,玩家靠横移把敌人对到正上方;移动与开火彻底解耦,触屏单指即可。
+    // (_findTarget / _aliens 保留不调用,留作未来「自动瞄准」开关切换)
+    this.aimAngle = -Math.PI / 2;
 
     if (this.hitFlash > 0) this.hitFlash -= dt;
     if (this.invuln > 0) this.invuln -= dt;
@@ -325,21 +325,24 @@
   };
   Particle.prototype.draw = function (ctx) { G.Render.particle(ctx, this); };
 
-  // —— 金币(击杀掉落,飞向飞船)——
+  // —— 金币(击杀掉落,飞向飞船吸收;v0.7 改为温和吸附 + 水晶外观)——
   function Coin(x, y, value) {
     this.x = x; this.y = y; this.value = value;
-    this.r = 6;
+    this.r = 8;                    // v0.7:略放大(旧 6 太像小弹点,易被误当追踪弹)
     this.vx = (Math.random() - 0.5) * 120;
     this.vy = (Math.random() - 0.5) * 120 - 60;
     this.life = 4; this.dead = false; this.collected = false;
+    this.t = 0;                    // 旋转相位(水晶渲染用)
   }
   Coin.prototype.update = function (dt, ship) {
+    this.t += dt;
     this.life -= dt;
     if (this.life <= 0) this.dead = true;
-    // 飞向飞船(引力)
+    // v0.7:温和吸附——远处缓慢飘近,近距(220px 内)才明显加速吸入。
+    //   不再"存活越久拉力越猛直冲飞船"(旧式像追踪弹躲不掉),改为收集物式缓吸。
     var dx = ship.x - this.x, dy = ship.y - this.y;
     var d = Math.hypot(dx, dy) || 1;
-    var pull = G.Config.FX.coinFlySpeed * (1 + (4 - this.life) * 0.5);
+    var pull = G.Config.FX.coinFlySpeed * (d < 220 ? 0.9 : 0.4);
     this.vx += (dx / d) * pull * dt * 6;
     this.vy += (dy / d) * pull * dt * 6;
     this.vx *= 0.9; this.vy *= 0.9;
