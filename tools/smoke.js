@@ -365,14 +365,19 @@ console.log('\n[8] 飞船跟随指针 + 自动锁敌(v0.5)');
 Game.startGame();
 Game.activeSkill = null;
 var ship0x = Game.ship.x, ship0y = Game.ship.y;
-// 指针移到右下活动区内,飞船应朝其位移(限下半屏)
+// v0.6:飞船固定底部、仅左右移动。指针指向右侧,飞船 x 应跟上,y 保持固定
 P.pointer.x = 600; P.pointer.y = 950; P.pointer.down = false;
 Game.ship.update(1.0);   // 1s 足够移到位
-assert(Math.hypot(Game.ship.x - 600, Game.ship.y - 950) < 5, '飞船跟随指针位移 (→ ' + Game.ship.x.toFixed(0) + ',' + Game.ship.y.toFixed(0) + ')');
-// 活动区上界:指针指到屏幕顶部,飞船不应越过 minY
+assert(Math.abs(Game.ship.x - 600) < 5, '飞船左右跟随指针 x (x ' + Game.ship.x.toFixed(0) + ')');
+assert(Game.ship.y === G.Config.SHIP.y, '飞船 y 固定底部 (y ' + Game.ship.y.toFixed(0) + ', 固定 ' + G.Config.SHIP.y + ')');
+// 指针指到屏幕顶部,y 也不变(不再上下移动)
 P.pointer.x = 360; P.pointer.y = 0;
 Game.ship.update(1.0);
-assert(Game.ship.y >= G.Config.SHIP.minY - 1, '飞船不越过活动区上界 minY (y ' + Game.ship.y.toFixed(0) + ')');
+assert(Game.ship.x === 360, '飞船 x 跟到 360 (x ' + Game.ship.x.toFixed(0) + ')');
+assert(Game.ship.y === G.Config.SHIP.y, '指针在顶部时飞船 y 仍固定 (y ' + Game.ship.y.toFixed(0) + ')');
+// 左右边界:指针超出右边,飞船贴边不越界
+P.pointer.x = 99999; Game.ship.update(1.0);
+assert(Game.ship.x === G.Config.WIDTH - Game.ship.radius, '右边界钳制 (x ' + Game.ship.x.toFixed(0) + ')');
 // 自动锁敌:在场怪在 aimRange 内,炮口应指向它而非指针
 Game.aliens.length = 0;
 var aimTarget = new G.Entities.Alien('t1', Game.ship.x + 100, Game.ship.y - 200);
@@ -498,6 +503,46 @@ assert(Game.activeSkill === null, '胶囊未拾取前技能仍为空');
 // 胶囊渲染冒烟:跑一帧 drawWorld,校验胶囊 + 技能特效渲染路径无异常
 pump(120);
 assert(true, '技能胶囊 + 特效渲染路径执行无异常');
+
+console.log('\n[10] 美术系统渲染冒烟(v0.6:飞船模块化进化 + 怪物生态)');
+// 飞船 Lv1..Lv5:逐级组装模块(引擎/机翼/船体/武器/能量核心),渲染路径无异常
+Game.startGame(); Game.activeSkill = null;
+for (var lv = 1; lv <= 5; lv++) {
+  Game.shipLevel = lv; Game._syncShipVisual();
+  Game.ship.update(0.02);
+  Game.ship.draw(makeCtx());
+}
+assert(true, '飞船 Lv1→Lv5 模块化渲染路径执行无异常');
+// 受击闪白路径
+Game.ship.hitFlash = 0.2; Game.ship.draw(makeCtx()); Game.ship.hitFlash = 0;
+assert(true, '飞船受击闪白渲染路径无异常');
+// 怪物 t1..t6:每种独立轮廓 + 发光弱点核心,渲染路径无异常
+for (var tk = 1; tk <= 6; tk++) {
+  var al = new G.Entities.Alien('t' + tk, G.Config.WIDTH / 2, 400);
+  al.draw(makeCtx());
+}
+assert(true, '怪物 t1→t6 生态渲染路径执行无异常');
+// 怪物受击闪白 + 状态(冰冻/灼烧)叠加渲染
+var stAlien = new G.Entities.Alien('t3', 360, 500);
+stAlien.hitFlash = 0.2; stAlien.draw(makeCtx());
+stAlien.slowTimer = 1; stAlien.slowMul = 0.4; stAlien.draw(makeCtx());
+stAlien.burnTimer = 1; stAlien.burnDps = 1; stAlien.draw(makeCtx());
+assert(true, '怪物闪白/冰冻/灼烧状态叠加渲染无异常');
+// 受伤血条渲染(hp < maxHp)
+var hurt = new G.Entities.Alien('t5', 360, 600); hurt.hp = 10; hurt.draw(makeCtx());
+assert(true, '怪物血条渲染路径无异常');
+// 飞船技能弹道变体渲染(各 fx 路径:激光/火/闪电/冰/multi)
+Game.startGame();
+['ice', 'fire', 'bolt', 'laser', 'multi2', 'multi3', 'multi4'].forEach(function (sk) {
+  Game.activeSkill = sk; Game.bullets.length = 0; Game.fire(G.Config.WEAPONS[1]);
+  Game.bullets[Game.bullets.length - 1].draw(makeCtx());
+});
+assert(true, '各技能弹道变体渲染路径无异常');
+// 跑一整帧 render 覆盖全部绘制路径
+Game.startGame(); Game.activeSkill = 'fire';
+P.pointer.x = 360; P.pointer.y = 1000; P.pointer.down = true;
+pump(400);
+assert(true, '完整 render 帧(飞船/怪物/技能/胶囊/HUD)无异常');
 
 console.log('\n==============================');
 console.log('结果: ' + pass + ' 通过 / ' + fail + ' 失败');

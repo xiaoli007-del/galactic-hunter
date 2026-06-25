@@ -40,19 +40,18 @@
   Ship.prototype.update = function (dt) {
     var p = G.Platform.pointer, cfg = G.Config, SH = cfg.SHIP;
 
-    // v0.5:飞船跟随指针位移(限下半屏活动区),实现主动闪避。
-    //   朝指针位置以最大速度逼近;若指针在活动区外则钳到边界,飞船贴边但不越界。
+    // v0.6:飞船固定底部,仅左右跟随指针(Galaga 式)。腾出上下纵深给怪物下压,
+    // 玩家靠左右走位闪避;炮口仍自动锁敌,移动与开火解耦,触屏单指即可走位+输出。
     if (p.down || p.x !== 0 || p.y !== 0) {   // 有指针输入才动(避免开局被未初始化指针扯走)
       var tx = Math.max(this.radius, Math.min(cfg.WIDTH - this.radius, p.x));
-      var ty = Math.max(SH.minY, Math.min(SH.maxY, p.y));
-      var dx = tx - this.x, dy = ty - this.y;
-      var d = Math.hypot(dx, dy) || 1;
+      var dx = tx - this.x;
       var step = SH.speed * dt;
-      if (step >= d) { this.x = tx; this.y = ty; }      // 一帧可达则直接吸附,消除抖动
-      else { this.x += (dx / d) * step; this.y += (dy / d) * step; }
+      if (step >= Math.abs(dx)) this.x = tx;            // 一帧可达则吸附,消除抖动
+      else this.x += (dx >= 0 ? 1 : -1) * step;
+      this.y = SH.y;                                     // 固定底部
     }
 
-    // v0.5:炮口自动锁最近敌人(方案 A);无目标或目标超出 aimRange 则朝指针。
+    // 炮口自动锁最近敌人;无目标或目标超出 aimRange 则朝指针方向。
     var target = this._findTarget();
     if (target) this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
     else this.aimAngle = Math.atan2(p.y - this.y, p.x - this.x);

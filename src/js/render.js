@@ -112,72 +112,155 @@
       ctx.globalAlpha = 1;
     },
 
-    // —— 飞船 ——
+    // —— 飞船(模块化 + 阶段进化,v0.6)——
+    //   不再用静态贴图(无法表达升级外观变化);改为按 ship.level 组装模块:
+    //   引擎 → 机翼 → 船体 → 武器挂载 → 能量核心(最关键,发光随等级增强)。
+    //   等级越高:体积↑ / 武器数↑ / 核心发光↑ / 结构 单体→拼装→机械复杂化 / 尾焰↑。
     ship: function (ctx, ship) {
       var lvl = ship.level || 1;
-      var visScale = 1 + (lvl - 1) * 0.06;      // 船舰等级越高体型越大(Lv5≈1.24×;仅视觉,碰撞半径不变)
+      var visScale = 1 + (lvl - 1) * 0.06;      // 体型随等级放大(Lv5≈1.24×;仅视觉,碰撞半径不变)
       var glowColor = ship.glow || '#5ad1ff';    // 等级光晕色(见 Config.SHIPS[].glow)
-      var tex = G.Assets && G.Assets.get('ship');
-      if (tex) { this._sprite(ctx, tex, ship.x, ship.y, ship.radius * 2.6 * visScale, ship.aimAngle + Math.PI / 2, ship.hitFlash > 0, glowColor); return; }
+      var r = ship.radius, flash = ship.hitFlash > 0;
+      var t = Math.max(1, Math.min(5, lvl));     // 进化阶段 1..5
       ctx.save();
       ctx.translate(ship.x, ship.y);
       ctx.rotate(ship.aimAngle + Math.PI / 2);
       ctx.scale(visScale, visScale);
-      var r = ship.radius, flash = ship.hitFlash > 0;
-
-      // 外光晕(发光精灵,lighter)
-      ctx.globalCompositeOperation = 'lighter';
-      drawGlow(ctx, glowColor, 0, 0, r * 2.2, 0.45);
-
-      // 引擎尾焰
-      var flame = 0.7 + 0.3 * Math.sin(Date.now() / 60);
-      drawGlow(ctx, '#4a9eff', 0, r * 0.6 + r * flame, r * 1.4, 0.7);
-      ctx.globalCompositeOperation = 'source-over';
-
-      // 主体金属渐变
-      var body = ctx.createLinearGradient(-r, 0, r, 0);
-      if (flash) { body.addColorStop(0, '#fff'); body.addColorStop(0.5, '#dbe6f5'); body.addColorStop(1, '#fff'); }
-      else { body.addColorStop(0, '#2a3340'); body.addColorStop(0.5, '#9fb0c6'); body.addColorStop(1, '#2a3340'); }
-      ctx.fillStyle = body;
-      ctx.beginPath();
-      ctx.moveTo(0, -r * 1.15);
-      ctx.lineTo(r * 0.5, r * 0.2); ctx.lineTo(r * 0.95, r * 0.75); ctx.lineTo(r * 0.3, r * 0.55);
-      ctx.lineTo(r * 0.3, r * 0.7); ctx.lineTo(-r * 0.3, r * 0.7); ctx.lineTo(-r * 0.3, r * 0.55);
-      ctx.lineTo(-r * 0.95, r * 0.75); ctx.lineTo(-r * 0.5, r * 0.2);
-      ctx.closePath(); ctx.fill();
-      ctx.lineWidth = 1.6;
-      ctx.strokeStyle = flash ? '#fff' : '#bfe0ff';
-      ctx.stroke();
-
-      ctx.strokeStyle = 'rgba(90,209,255,0.9)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(0, -r * 1.0); ctx.lineTo(0, r * 0.55); ctx.stroke();
-
-      var cab = ctx.createRadialGradient(-r * 0.12, -r * 0.35, 1, 0, -r * 0.3, r * 0.32);
-      cab.addColorStop(0, '#eaf6ff'); cab.addColorStop(0.5, '#3aa0ff'); cab.addColorStop(1, '#0a2a55');
-      ctx.fillStyle = cab;
-      ctx.beginPath(); ctx.arc(0, -r * 0.3, r * 0.26, 0, Math.PI * 2); ctx.fill();
+      this._shipEngine(ctx, r, t, flash);
+      this._shipWings(ctx, r, t, glowColor, flash);
+      this._shipHull(ctx, r, t, flash);
+      this._shipWeapons(ctx, r, t, flash);
+      this._shipCore(ctx, r, t, glowColor, flash);
       ctx.restore();
     },
 
-    // —— 外星怪 ——
+    // 推进器:喷口数 1→2→3→4→5(环形),尾焰随等级变长变亮
+    _shipEngine: function (ctx, r, t, flash) {
+      var n = t;
+      var fl = 0.7 + 0.3 * Math.sin(Date.now() / 55);
+      var flameLen = r * (0.7 + t * 0.16) * fl;
+      ctx.globalCompositeOperation = 'lighter';
+      for (var i = 0; i < n; i++) {
+        var off = n === 1 ? 0 : (i - (n - 1) / 2) * (r * 0.32);
+        drawGlow(ctx, '#4a9eff', off, r * 0.62 + flameLen * 0.4, r * (0.42 + t * 0.05), 0.65);
+        drawGlow(ctx, '#cfe8ff', off, r * 0.62 + flameLen * 0.18, r * 0.2, 0.85);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      for (var j = 0; j < n; j++) {
+        var ox = n === 1 ? 0 : (j - (n - 1) / 2) * (r * 0.32);
+        var g = ctx.createLinearGradient(ox, r * 0.5, ox, r * 0.8);
+        if (flash) { g.addColorStop(0, '#fff'); g.addColorStop(1, '#fff'); }
+        else { g.addColorStop(0, '#3a4a5a'); g.addColorStop(1, '#788ea0'); }
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(ox, r * 0.64, r * 0.1, r * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+      }
+    },
+
+    // 机翼:窄→宽→分叉→能量翼缘;左右对称
+    _shipWings: function (ctx, r, t, glow, flash) {
+      var spread = [0.55, 0.85, 1.1, 1.35, 1.6][t - 1] * r;
+      var fork = t >= 3, energy = t >= 4;
+      var drawSide = function (s) {
+        var g = ctx.createLinearGradient(0, 0, s * spread, 0);
+        if (flash) { g.addColorStop(0, '#fff'); g.addColorStop(1, '#cfe0f0'); }
+        else { g.addColorStop(0, '#5a6a7a'); g.addColorStop(0.5, '#9fb0c6'); g.addColorStop(1, '#2a3340'); }
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(s * r * 0.15, -r * 0.1);
+        ctx.lineTo(s * spread, r * 0.15);
+        ctx.lineTo(s * spread * (fork ? 0.65 : 0.78), r * (fork ? 0.5 : 0.45));
+        ctx.lineTo(s * r * 0.2, r * 0.38);
+        ctx.closePath(); ctx.fill();
+        ctx.lineWidth = 1.2; ctx.strokeStyle = flash ? '#fff' : lighten(glow, 0.15); ctx.stroke();
+        if (energy) {   // 能量翼缘
+          ctx.globalCompositeOperation = 'lighter';
+          drawGlow(ctx, glow, s * spread * 0.8, r * 0.28, r * 0.46, 0.45);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+      };
+      drawSide(1); drawSide(-1);
+    },
+
+    // 船体核心:梭形→装甲条纹→分体结构;金属渐变
+    _shipHull: function (ctx, r, t, flash) {
+      var split = t >= 4;
+      var len = r * (1.15 + t * 0.04), wid = r * (0.3 + t * 0.04);
+      var g = ctx.createLinearGradient(-r, 0, r, 0);
+      if (flash) { g.addColorStop(0, '#fff'); g.addColorStop(0.5, '#dbe6f5'); g.addColorStop(1, '#fff'); }
+      else { g.addColorStop(0, '#2a3340'); g.addColorStop(0.5, '#aebccf'); g.addColorStop(1, '#2a3340'); }
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(0, -len);
+      ctx.quadraticCurveTo(wid, -r * 0.2, wid * 1.3, r * 0.5);
+      ctx.lineTo(r * 0.2, r * 0.6); ctx.lineTo(-r * 0.2, r * 0.6);
+      ctx.lineTo(-wid * 1.3, r * 0.5);
+      ctx.quadraticCurveTo(-wid, -r * 0.2, 0, -len);
+      ctx.closePath(); ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = flash ? '#fff' : '#cfe0ff'; ctx.stroke();
+      if (t >= 2) {   // 装甲板拼接条纹
+        ctx.strokeStyle = 'rgba(20,28,40,0.55)'; ctx.lineWidth = 1;
+        for (var p = 0; p < t - 1; p++) {
+          var py = -r * 0.3 + p * r * 0.24;
+          ctx.beginPath(); ctx.moveTo(-wid, py); ctx.lineTo(wid, py); ctx.stroke();
+        }
+      }
+      if (split) {   // 分体结构(Lv4+)中线缝隙
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, -len * 0.9); ctx.lineTo(0, r * 0.5); ctx.stroke();
+      }
+    },
+
+    // 武器挂载:1→2→3→4 管,高级多联装
+    _shipWeapons: function (ctx, r, t, flash) {
+      var n = Math.min(t, 4);
+      for (var i = 0; i < n; i++) {
+        var off = n === 1 ? 0 : (i - (n - 1) / 2) * r * 0.38;
+        var g = ctx.createLinearGradient(off, -r * 1.0, off, -r * 1.3);
+        if (flash) { g.addColorStop(0, '#fff'); g.addColorStop(1, '#fff'); }
+        else { g.addColorStop(0, '#788ea0'); g.addColorStop(1, '#3a4a5a'); }
+        ctx.fillStyle = g;
+        ctx.fillRect(off - r * 0.05, -r * 1.28, r * 0.1, r * 0.42);
+        if (t >= 3) {   // 多联装炮管
+          ctx.fillRect(off - r * 0.09, -r * 1.2, r * 0.045, r * 0.3);
+          ctx.fillRect(off + r * 0.045, -r * 1.2, r * 0.045, r * 0.3);
+        }
+      }
+    },
+
+    // 能量核心(最关键):尺寸/亮度随等级增强,Lv5 悬浮 + 能量环
+    _shipCore: function (ctx, r, t, glow, flash) {
+      var size = r * (0.16 + t * 0.026);
+      var alpha = 0.45 + t * 0.12;
+      var float = (t >= 5) ? Math.sin(Date.now() / 180) * r * 0.06 : 0;
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, glow, 0, float, size * 3.0, alpha);
+      var g = ctx.createRadialGradient(0, float, 0, 0, float, size);
+      if (flash) { g.addColorStop(0, '#fff'); g.addColorStop(1, glow); }
+      else { g.addColorStop(0, '#fff'); g.addColorStop(0.4, lighten(glow, 0.3)); g.addColorStop(1, glow); }
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, float, size, 0, Math.PI * 2); ctx.fill();
+      if (t >= 5) {   // 悬浮能量环
+        ctx.strokeStyle = hexToRgba(glow, 0.6); ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, float, size * 1.8, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    },
+
+    // —— 外星怪(机械/生物机械生态,v0.6)——
+    //   不用静态贴图;每种 tier 有独立轮廓 + 发光弱点核心,一眼可辨类型,
+    //   复杂度/光效随 tier 递增。统一规则:发光弱点核心 + 清晰轮廓 + 太空机械风。
     alien: function (ctx, a) {
       var def = a.def, r = def.radius, flash = a.hitFlash > 0;
-      var tex = G.Assets && G.Assets.get('alien-' + a.type);
-      if (tex) {
-        this._sprite(ctx, tex, a.x, a.y, r * 2.4, a.angle, flash, def.color);
-        this._alienStatus(ctx, a, r);
-        if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
-        return;
-      }
       ctx.save();
       ctx.translate(a.x, a.y); ctx.rotate(a.angle);
       var wob = Math.sin(a.phase) * 0.5 + 0.5;
 
-      // 光晕(发光精灵)
+      // 外光晕(发光精灵)
       ctx.globalCompositeOperation = 'lighter';
       drawGlow(ctx, def.color, 0, 0, r * 2.4, 0.5);
       ctx.globalCompositeOperation = 'source-over';
 
+      // 本体径向渐变(内亮外暗,机械装甲质感)
       var fill = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r);
       if (flash) { fill.addColorStop(0, '#fff'); fill.addColorStop(1, '#fff'); }
       else { fill.addColorStop(0, lighten(def.color, 0.4)); fill.addColorStop(0.6, def.color); fill.addColorStop(1, darken(def.color, 0.55)); }
@@ -192,6 +275,17 @@
         case 4: this._alienWraith(ctx, r, wob); break;
         case 5: this._alienElite(ctx, r, wob); break;
         case 6: this._alienBoss(ctx, r, wob); break;
+      }
+
+      // 发光弱点核心(非 Boss;Boss 自带多核心节点)。越强越亮,随 tier 增大。
+      if (!a.isBoss) {
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, lighten(def.color, 0.3), 0, 0, r * (0.4 + def.tier * 0.06), 0.5 + def.tier * 0.05);
+        ctx.globalCompositeOperation = 'source-over';
+        var cg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * (0.14 + def.tier * 0.02));
+        cg.addColorStop(0, '#fff'); cg.addColorStop(0.5, lighten(def.color, 0.4)); cg.addColorStop(1, def.color);
+        ctx.fillStyle = cg;
+        ctx.beginPath(); ctx.arc(0, 0, r * (0.14 + def.tier * 0.02), 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();
       this._alienStatus(ctx, a, r);
@@ -217,63 +311,117 @@
       ctx.restore();
     },
 
+    // ① 小型追踪虫 Drone Bug:装甲水滴体 + 尖刺腿 + 上颚(快速/自爆感)
     _alienCrawler: function (ctx, r, wob) {
-      ctx.beginPath(); ctx.ellipse(0, 0, r * 0.7, r, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(-r * 0.4, -r * 0.7); ctx.lineTo(-r * 0.7, -r * 1.4 - wob * 4);
-      ctx.moveTo(r * 0.4, -r * 0.7); ctx.lineTo(r * 0.7, -r * 1.4 - wob * 4); ctx.stroke();
+      ctx.moveTo(0, -r);
+      ctx.quadraticCurveTo(r * 0.9, -r * 0.2, r * 0.6, r * 0.7);
+      ctx.quadraticCurveTo(0, r * 1.05, -r * 0.6, r * 0.7);
+      ctx.quadraticCurveTo(-r * 0.9, -r * 0.2, 0, -r);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.beginPath();   // 三条尖刺腿
+      ctx.moveTo(-r * 0.5, r * 0.4); ctx.lineTo(-r * 1.0, r * 0.9 + wob * 5);
+      ctx.moveTo(0, r * 0.55); ctx.lineTo(0, r * 1.2 + wob * 5);
+      ctx.moveTo(r * 0.5, r * 0.4); ctx.lineTo(r * 1.0, r * 0.9 + wob * 5);
+      ctx.stroke();
+      ctx.beginPath();   // 上颚
+      ctx.moveTo(-r * 0.2, -r * 0.85); ctx.lineTo(-r * 0.08, -r * 1.2);
+      ctx.moveTo(r * 0.2, -r * 0.85); ctx.lineTo(r * 0.08, -r * 1.2);
+      ctx.stroke();
     },
+    // ② 拦截机 Interceptor:后掠三角翼 + 双引擎(中距射击型)
     _alienDrone: function (ctx, r, wob) {
       ctx.beginPath();
-      ctx.moveTo(0, -r); ctx.lineTo(r, r * 0.7); ctx.lineTo(r * 0.4, r * 0.3);
-      ctx.lineTo(-r * 0.4, r * 0.3); ctx.lineTo(-r, r * 0.7); ctx.closePath();
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#eafff5';
-      ctx.beginPath(); ctx.arc(0, -r * 0.1, r * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.moveTo(0, -r * 0.9);
+      ctx.lineTo(r * 1.1, r * 0.6); ctx.lineTo(r * 0.5, r * 0.4);
+      ctx.lineTo(0, r * 0.8); ctx.lineTo(-r * 0.5, r * 0.4); ctx.lineTo(-r * 1.1, r * 0.6);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, '#cfe8ff', -r * 0.7, r * 0.5, r * 0.3, 0.7);   // 双引擎光
+      drawGlow(ctx, '#cfe8ff', r * 0.7, r * 0.5, r * 0.3, 0.7);
+      ctx.globalCompositeOperation = 'source-over';
     },
+    // ③ 装甲巨兽 Armored Brute:六边形装甲体 + 钳臂 + 凹陷核心(高防肉盾)
     _alienBrute: function (ctx, r, wob) {
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(-r * 0.8, r * 0.2); ctx.lineTo(-r * 1.3, -r * 0.3 + wob * 6);
-      ctx.moveTo(r * 0.8, r * 0.2); ctx.lineTo(r * 1.3, -r * 0.3 + wob * 6); ctx.stroke();
-    },
-    _alienWraith: function (ctx, r, wob) {
-      ctx.globalAlpha = 0.85;
-      ctx.beginPath();
-      var pts = 7;
-      for (var i = 0; i <= pts; i++) {
-        var ang = (i / pts) * Math.PI * 2, rr = r * (0.7 + 0.35 * Math.sin(ang * 3 + wob * 4));
-        var x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.globalAlpha = 1;
-    },
-    _alienElite: function (ctx, r, wob) {
-      ctx.beginPath();
-      for (var i = 0; i < 10; i++) {
-        var ang = (i / 10) * Math.PI * 2 - Math.PI / 2, rr = i % 2 === 0 ? r : r * 0.5;
-        var x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      for (var i = 0; i < 6; i++) {
+        var a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+        var x = Math.cos(a) * r * 0.85, y = Math.sin(a) * r * 0.85;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
       }
       ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#fff3e0';
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 4;   // 双钳臂
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.8, r * 0.3); ctx.quadraticCurveTo(-r * 1.4, r * 0.1, -r * 1.5, -r * 0.4 + wob * 6);
+      ctx.moveTo(r * 0.8, r * 0.3); ctx.quadraticCurveTo(r * 1.4, r * 0.1, r * 1.5, -r * 0.4 + wob * 6);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(-r * 1.5, -r * 0.4 + wob * 6, r * 0.16, 0, Math.PI * 2);
+      ctx.arc(r * 1.5, -r * 0.4 + wob * 6, r * 0.16, 0, Math.PI * 2); ctx.fill();
     },
+    // ④ 相位幽影 Phase Wraith:半透明波浪生物机械体 + 触须(闪避型)
+    _alienWraith: function (ctx, r, wob) {
+      ctx.globalAlpha = 0.82;
+      ctx.beginPath();
+      var pts = 9;
+      for (var i = 0; i <= pts; i++) {
+        var ang = (i / pts) * Math.PI * 2, rr = r * (0.7 + 0.3 * Math.sin(ang * 3 + wob * 4));
+        var x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.globalAlpha = 0.5;   // 触须
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.4, r * 0.6); ctx.quadraticCurveTo(-r * 0.8, r * 1.0, -r * 0.6 + wob * 4, r * 1.4);
+      ctx.moveTo(r * 0.4, r * 0.6); ctx.quadraticCurveTo(r * 0.8, r * 1.0, r * 0.6 - wob * 4, r * 1.4);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    },
+    // ⑤ 精英装甲 Elite Armor:不规则八边形机械体 + 肩炮 + 装甲分割 + 暴露弱点核心
+    _alienElite: function (ctx, r, wob) {
+      ctx.beginPath();
+      var pts = [[0, -1], [0.6, -0.7], [1, -0.1], [0.7, 0.7], [0, 1], [-0.7, 0.7], [-1, -0.1], [-0.6, -0.7]];
+      for (var i = 0; i < pts.length; i++) {
+        i ? ctx.lineTo(pts[i][0] * r, pts[i][1] * r) : ctx.moveTo(pts[i][0] * r, pts[i][1] * r);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 3;   // 肩炮
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.7, -r * 0.4); ctx.lineTo(-r * 1.2, -r * 0.8);
+      ctx.moveTo(r * 0.7, -r * 0.4); ctx.lineTo(r * 1.2, -r * 0.8);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(-r * 1.2, -r * 0.8, r * 0.15, 0, Math.PI * 2);
+      ctx.arc(r * 1.2, -r * 0.8, r * 0.15, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 1.5;   // 装甲分割线
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.5, -r * 0.3); ctx.lineTo(r * 0.5, -r * 0.3);
+      ctx.moveTo(0, -r * 0.6); ctx.lineTo(0, r * 0.6);
+      ctx.stroke();
+    },
+    // ⑥ 巨构 Boss Colossus:分段团块 + 多核心节点 + 尖刺(占屏 1/3,分段可破坏感)
     _alienBoss: function (ctx, r, wob) {
       ctx.beginPath();
       ctx.moveTo(0, -r);
-      ctx.quadraticCurveTo(r * 1.2, -r * 0.2, r * 0.8, r);
-      ctx.quadraticCurveTo(0, r * 1.2, -r * 0.8, r);
-      ctx.quadraticCurveTo(-r * 1.2, -r * 0.2, 0, -r);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#fff';
-      var eyes = [[-r * 0.4, -r * 0.1], [r * 0.4, -r * 0.1], [0, r * 0.35]];
+      ctx.quadraticCurveTo(r * 1.3, -r * 0.2, r * 0.9, r);
+      ctx.quadraticCurveTo(0, r * 1.25, -r * 0.9, r);
+      ctx.quadraticCurveTo(-r * 1.3, -r * 0.2, 0, -r);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 2;   // 装甲段分割(可破坏感)
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.7, -r * 0.3); ctx.quadraticCurveTo(0, -r * 0.5, r * 0.7, -r * 0.3);
+      ctx.moveTo(-r * 0.9, r * 0.3); ctx.quadraticCurveTo(0, r * 0.1, r * 0.9, r * 0.3);
+      ctx.stroke();
+      ctx.lineWidth = 3;   // 顶刺
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.5, -r * 0.8); ctx.lineTo(-r * 0.8, -r * 1.3);
+      ctx.moveTo(r * 0.5, -r * 0.8); ctx.lineTo(r * 0.8, -r * 1.3);
+      ctx.stroke();
+      var eyes = [[-r * 0.4, -r * 0.1], [r * 0.4, -r * 0.1], [0, r * 0.35]];   // 多核心节点
       for (var i = 0; i < eyes.length; i++) {
-        ctx.beginPath(); ctx.arc(eyes[i][0], eyes[i][1], r * 0.13, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(eyes[i][0], eyes[i][1], r * 0.12, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#ff3d6e';
         ctx.beginPath(); ctx.arc(eyes[i][0], eyes[i][1], r * 0.06, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff';
       }
     },
 
