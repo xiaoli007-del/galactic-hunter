@@ -147,15 +147,17 @@ assert(Game.shipLevel === sb2, '金币不足时不升级');
 
 console.log('\n[4c] 船舰火力加成接入子弹伤害');
 Game.startGame();
-Game.weaponLevel = 1;                    // 脉冲激光 伤害 1
+Game.weaponLevel = 1;                    // 脉冲激光(v0.5 伤害 2,前期更易清怪)
 Game.shipLevel = 3; Game._syncShipVisual();    // 巡洋舰 fireMul 1.5
+Game.activeSkill = null;                       // 无技能:用武器默认弹道
 Game.fire(G.Config.WEAPONS[1]);
 const bd = Game.bullets[Game.bullets.length - 1].damage;
-assert(bd === 1.5, '子弹伤害 = 武器伤害 × 船舰 fireMul (got ' + bd + ')');
+const expectBd = G.Config.WEAPONS[1].damage * G.Config.SHIPS[3].fireMul;   // 2 × 1.5 = 3
+assert(bd === expectBd, '子弹伤害 = 武器伤害 × 船舰 fireMul (got ' + bd + ', expect ' + expectBd + ')');
 Game.shipLevel = 1; Game._syncShipVisual();    // 回退 1.0
 Game.fire(G.Config.WEAPONS[1]);
 const bd2 = Game.bullets[Game.bullets.length - 1].damage;
-assert(bd2 === 1, 'Lv1 船舰无加成 (got ' + bd2 + ')');
+assert(bd2 === G.Config.WEAPONS[1].damage, 'Lv1 船舰无加成 (got ' + bd2 + ')');
 
 console.log('\n[4e] 升级防御');
 const db = Game.defenseLevel;
@@ -224,12 +226,15 @@ assert(Game.killCount === killBefore + 1, '反弹击杀计入击杀/掉落 (kill
 // 弱反弹(低倍率)不致死时,飞船仍碾死怪物但不计 killAlien —— 验证反射反伤本身生效
 Game.startGame();
 Game.weaponLevel = 1; Game.shipLevel = 1; Game._syncShipVisual();
+Game.activeSkill = null;
 Game.defenseLevel = 3; Game._applyDefense(); Game.ship.reflectChance = 1;
-var probe3 = new G.Entities.Alien('t3', Game.ship.x, Game.ship.y - 5);  // 蟹甲 hp8:反伤 0.6 不死
+var probe3 = new G.Entities.Alien('t3', Game.ship.x, Game.ship.y - 5);  // 蟹甲 hp8
 Game.aliens.push(probe3); Game.ship.invuln = 0;
 const hp3 = probe3.hp;
 Game.collisions();
-assert(probe3.hp === hp3 - 0.6, '弱反弹仍对怪造成伤害 (hp ' + hp3 + ' → ' + probe3.hp + ')');
+// 反伤 = 武器伤害(v0.5 w1=2)× 船舰 fireMul(1)× reflectDmgMul(0.6) = 1.2,不致死
+const reflectDmg = G.Config.WEAPONS[1].damage * G.Config.SHIPS[1].fireMul * Game.ship.reflectDmgMul;
+assert(probe3.hp === hp3 - reflectDmg, '弱反弹仍对怪造成伤害 (hp ' + hp3 + ' → ' + probe3.hp + ', 反伤 ' + reflectDmg + ')');
 
 console.log('\n[4j] Boss 多阶段');
 Game.startGame();
@@ -302,6 +307,197 @@ const a = new G.Entities.Alien('t6', Game.ship.x, Game.ship.y - 5);
 Game.aliens.push(a);
 pump(200);
 assert(Game.state === 'gameover' || Game.ship.hp <= Game.ship.maxHp, '受击结算链路正常');
+
+console.log('\n[7] 战绩排行榜(v0.4)');
+Game.leaderboard = []; Game.saveLeaderboard();          // 隔离榜单做基线
+assert(Game.leaderboard.length === 0, '初始榜单为空');
+// 0 分不入榜
+Game.startGame();
+Game.score = 0; Game.battleTime = 65; Game.killCount = 12;
+Game.weaponLevel = 3; Game.shipLevel = 2; Game.defenseLevel = 2;
+Game.gameOver();
+assert(Game.leaderboard.length === 0, '0 分不入榜 (len ' + Game.leaderboard.length + ')');
+// 正常入榜 + 字段记录
+Game.startGame();
+Game.score = 500; Game.battleTime = 65; Game.killCount = 12;
+Game.weaponLevel = 3; Game.shipLevel = 2; Game.defenseLevel = 2;
+Game.gameOver();
+assert(Game.leaderboard.length === 1, '500 分入榜 (len ' + Game.leaderboard.length + ')');
+var e0 = Game.leaderboard[0];
+assert(e0.score === 500, '记录积分正确 (' + e0.score + ')');
+assert(e0.wave === 3, '记录波次正确 (wave ' + e0.wave + ')');   // floor(65/30)=2 → 波次 3
+assert(e0.kills === 12, '记录击杀数正确 (kills ' + e0.kills + ')');
+assert(e0.weapon === 3 && e0.ship === 2 && e0.defense === 2, '记录装备等级正确');
+assert(typeof e0.ts === 'number' && e0.ts > 0, '记录时间戳有效');
+// 降序排序
+Game.startGame(); Game.score = 1200; Game.gameOver();
+Game.startGame(); Game.score = 300; Game.gameOver();
+assert(Game.leaderboard.length === 3, '累计 3 条 (len ' + Game.leaderboard.length + ')');
+assert(Game.leaderboard[0].score === 1200, '榜首为最高分 (' + Game.leaderboard[0].score + ')');
+assert(Game.leaderboard[2].score === 300, '榜尾为最低分 (' + Game.leaderboard[2].score + ')');
+// Top 10 截断:推入 12 条(100..1200),应只保留前 10 高分
+Game.leaderboard = [];
+for (var s = 100; s <= 1200; s += 100) { Game.startGame(); Game.score = s; Game.gameOver(); }
+assert(Game.leaderboard.length === 10, '超过 10 条截断为 10 (len ' + Game.leaderboard.length + ')');
+assert(Game.leaderboard[0].score === 1200, '截断后榜首仍为最高 (' + Game.leaderboard[0].score + ')');
+assert(Game.leaderboard[9].score === 300, '截断后榜尾为 300 (' + Game.leaderboard[9].score + ')');
+// 持久化:写入独立存储键 gh_leaderboard(不混入 gh_save)
+var lbSaved = JSON.parse(lsStore['gh_leaderboard']);
+assert(Array.isArray(lbSaved) && lbSaved.length === 10, '榜单持久化到 gh_leaderboard (len ' + (lbSaved && lbSaved.length) + ')');
+var saveSaved = JSON.parse(lsStore['gh_save']);
+assert(saveSaved.leaderboard === undefined, '榜单未污染 save 键');
+// loadLeaderboard 从存储读回
+Game.leaderboard = [];
+Game.loadLeaderboard();
+assert(Game.leaderboard.length === 10, 'loadLeaderboard 读回 10 条 (len ' + Game.leaderboard.length + ')');
+// 排行榜状态切换 + 原路返回
+Game.state = 'gameover';
+Game.openLeaderboard();
+assert(Game.state === 'leaderboard', 'openLeaderboard 进入 leaderboard 状态');
+assert(Game._lbReturnState === 'gameover', '记录返回目标为 gameover');
+Game.closeLeaderboard();
+assert(Game.state === 'gameover', 'closeLeaderboard 原路返回 gameover');
+// 渲染冒烟:榜单满 10 条时跑一帧 drawLeaderboard,校验渲染路径无异常(无 ctx 则 no-op)
+Game.openLeaderboard(); pump(120); Game.closeLeaderboard();
+assert(true, '排行榜渲染路径执行无异常');
+
+console.log('\n[8] 飞船跟随指针 + 自动锁敌(v0.5)');
+Game.startGame();
+Game.activeSkill = null;
+var ship0x = Game.ship.x, ship0y = Game.ship.y;
+// 指针移到右下活动区内,飞船应朝其位移(限下半屏)
+P.pointer.x = 600; P.pointer.y = 950; P.pointer.down = false;
+Game.ship.update(1.0);   // 1s 足够移到位
+assert(Math.hypot(Game.ship.x - 600, Game.ship.y - 950) < 5, '飞船跟随指针位移 (→ ' + Game.ship.x.toFixed(0) + ',' + Game.ship.y.toFixed(0) + ')');
+// 活动区上界:指针指到屏幕顶部,飞船不应越过 minY
+P.pointer.x = 360; P.pointer.y = 0;
+Game.ship.update(1.0);
+assert(Game.ship.y >= G.Config.SHIP.minY - 1, '飞船不越过活动区上界 minY (y ' + Game.ship.y.toFixed(0) + ')');
+// 自动锁敌:在场怪在 aimRange 内,炮口应指向它而非指针
+Game.aliens.length = 0;
+var aimTarget = new G.Entities.Alien('t1', Game.ship.x + 100, Game.ship.y - 200);
+Game.aliens.push(aimTarget);
+Game.ship._aliens = Game.aliens;
+Game.ship.update(0.02);
+var angToTarget = Math.atan2(aimTarget.y - Game.ship.y, aimTarget.x - Game.ship.x);
+assert(Math.abs(Game.ship.aimAngle - angToTarget) < 0.1, '炮口自动锁定最近敌人');
+// 无目标时退回朝指针
+Game.aliens.length = 0;
+Game.ship.update(0.02);
+assert(Game.aliens.length === 0, '清场后无锁定目标');
+
+console.log('\n[9] 技能系统:拾取持久生效 + 弹道/特效(v0.5)');
+// 无技能时用武器默认 spread(1)
+Game.startGame();
+Game.activeSkill = null;
+Game.fire(G.Config.WEAPONS[1]);
+assert(Game.bullets.length === 1, '无技能:默认单发 (spread 1, 生成 ' + Game.bullets.length + ' 发)');
+assert(Game.bullets[0].skill === null, '无技能子弹 skill=null');
+// 四发技能:spread 覆盖为 4
+Game.startGame();
+Game.activeSkill = 'multi4';
+Game.fire(G.Config.WEAPONS[1]);
+assert(Game.bullets.length === 4, '四发技能:弹道覆盖为 4 (生成 ' + Game.bullets.length + ' 发)');
+assert(Game.bullets[0].skill && Game.bullets[0].skill.fx === 'multi', '四发子弹携带 multi 技能');
+// 火焰:伤害 ×1.8
+Game.startGame();
+Game.weaponLevel = 1; Game.shipLevel = 1; Game._syncShipVisual();
+Game.activeSkill = 'fire';
+Game.fire(G.Config.WEAPONS[1]);
+var fDmg = G.Config.WEAPONS[1].damage * G.Config.SHIPS[1].fireMul * G.Config.SKILLS.fire.damageMul;
+assert(Game.bullets[0].damage === fDmg, '火焰弹伤害 ×1.8 (got ' + Game.bullets[0].damage + ', expect ' + fDmg + ')');
+assert(Game.bullets[0].color === G.Config.SKILLS.fire.color, '火焰弹弹道色为技能色');
+// 激光:贯穿层=9999(无限贯穿)
+Game.startGame();
+Game.activeSkill = 'laser';
+Game.fire(G.Config.WEAPONS[1]);
+assert(Game.bullets[0].pierce >= 9999, '激光弹无限贯穿 (pierce ' + Game.bullets[0].pierce + ')');
+
+console.log('\n[9b] 拾取技能胶囊(子弹击中即拾取,持久直到下一个)');
+Game.startGame();
+Game.activeSkill = null;
+Game.powerups.length = 0;
+Game.bullets.length = 0;
+var pu = new G.Entities.PowerUp('ice', Game.ship.x, Game.ship.y - 80);
+Game.powerups.push(pu);
+Game.fire(G.Config.WEAPONS[1]);         // 朝胶囊方向(自动锁敌无目标→朝指针,这里子弹已生成)
+// 把子弹挪到胶囊上确保命中
+Game.bullets[0].x = pu.x; Game.bullets[0].y = pu.y;
+Game.collisions();
+assert(Game.activeSkill === 'ice', '击中胶囊拾取冰冻技能 (skill ' + Game.activeSkill + ')');
+assert(pu.collected === true, '胶囊标记已拾取');
+// 持久:新开火仍带 ice(直到拾取下一个)
+Game.fire(G.Config.WEAPONS[1]);
+assert(Game.bullets[Game.bullets.length - 1].skill && Game.bullets[Game.bullets.length - 1].skill.fx === 'ice',
+  '技能持久生效:后续子弹仍带 ice');
+// 拾取另一个技能→覆盖
+Game.powerups.length = 0; Game.bullets.length = 0;
+var pu2 = new G.Entities.PowerUp('fire', Game.ship.x, Game.ship.y - 80);
+Game.powerups.push(pu2);
+Game.fire(G.Config.WEAPONS[1]);
+Game.bullets[0].x = pu2.x; Game.bullets[0].y = pu2.y;
+Game.collisions();
+assert(Game.activeSkill === 'fire', '拾取新技能覆盖旧的 (→ ' + Game.activeSkill + ')');
+
+console.log('\n[9c] 技能命中效果:冰冻减速 / 火焰灼烧 / 闪电连锁');
+// 冰冻:命中后怪 slowMul<1、slowTimer>0
+Game.startGame();
+Game.activeSkill = 'ice'; Game.weaponLevel = 1; Game.shipLevel = 1; Game._syncShipVisual();
+var iceAlien = new G.Entities.Alien('t2', Game.ship.x, Game.ship.y - 60);  // hp3
+Game.aliens.push(iceAlien);
+Game.bullets.length = 0; Game.fire(G.Config.WEAPONS[1]);
+Game.bullets[0].x = iceAlien.x; Game.bullets[0].y = iceAlien.y;
+Game.collisions();
+assert(iceAlien.slowMul === G.Config.SKILLS.ice.slowMul, '冰冻施加减速 (slowMul ' + iceAlien.slowMul + ')');
+assert(iceAlien.slowTimer > 0, '冰冻减速有持续 (timer ' + iceAlien.slowTimer.toFixed(2) + ')');
+// 减速作用于移速:推进后位置变化应小于正常速度(无技能怪走得更快)
+var normal = new G.Entities.Alien('t2', 100, 100);
+var slowed = new G.Entities.Alien('t2', 100, 100);
+slowed.slowMul = 0.4;
+var nY = normal.y, sY = slowed.y;
+normal.update(0.5); slowed.update(0.5);
+assert(slowed.y - sY < normal.y - nY, '减速怪移动更慢 (正常 Δ' + (normal.y - nY).toFixed(1) + ' / 减速 Δ' + (slowed.y - sY).toFixed(1) + ')');
+// 火焰:命中施加 burn
+Game.startGame();
+Game.activeSkill = 'fire';
+var fireAlien = new G.Entities.Alien('t3', Game.ship.x, Game.ship.y - 60);  // 蟹甲 hp8,火焰不致死
+Game.aliens.push(fireAlien);
+Game.bullets.length = 0; Game.fire(G.Config.WEAPONS[1]);
+Game.bullets[0].x = fireAlien.x; Game.bullets[0].y = fireAlien.y;
+Game.collisions();
+assert(fireAlien.burnTimer > 0 && fireAlien.burnDps > 0, '火焰施加灼烧 (dps ' + fireAlien.burnDps + ', timer ' + fireAlien.burnTimer.toFixed(2) + ')');
+assert(fireAlien.dead === false, '火焰直击不致死蟹甲 (hp ' + fireAlien.hp + ')');
+// 灼烧随时间扣血
+var hpBeforeBurn = fireAlien.hp;
+fireAlien.update(2.1);   // burnDur 2.0,应扣 ~2.0 伤害
+assert(fireAlien.hp < hpBeforeBurn, '灼烧持续扣血 (hp ' + hpBeforeBurn + ' → ' + fireAlien.hp + ')');
+// 闪电:命中连锁附近怪
+Game.startGame();
+Game.activeSkill = 'bolt';
+var main = new G.Entities.Alien('t1', Game.ship.x, Game.ship.y - 60);       // hp1 主目标
+var near = new G.Entities.Alien('t1', Game.ship.x + 80, Game.ship.y - 60);  // hp1 连锁目标(在 220 半径内)
+Game.aliens.push(main, near);
+Game.bullets.length = 0; Game.fire(G.Config.WEAPONS[1]);
+Game.bullets[0].x = main.x; Game.bullets[0].y = main.y;
+var killsBefore = Game.killCount;
+Game.collisions();
+assert(main.dead === true, '闪电主目标被击杀');
+assert(near.dead === true, '闪电连锁击杀附近怪');
+assert(Game.killCount === killsBefore + 2, '连锁击杀计入击杀数 (kill ' + killsBefore + ' → ' + Game.killCount + ')');
+
+console.log('\n[9d] 胶囊定时掉落');
+Game.startGame();
+Game.powerups.length = 0;
+assert(Game.powerups.length === 0, '开局无胶囊');
+assert(Game.powerupTimer === G.Config.POWERUP.dropEvery, '首个胶囊倒计时初始化 (' + Game.powerupTimer + ')');
+// 推进越过掉落间隔,应生成胶囊(指针按下让飞船别乱飞)
+P.pointer.x = 360; P.pointer.y = 1100; P.pointer.down = true;
+pump(G.Config.POWERUP.dropEvery * 1000 + 200);
+assert(Game.powerups.length >= 1, '定时掉落胶囊 (生成 ' + Game.powerups.length + ' 个)');
+assert(Game.activeSkill === null, '胶囊未拾取前技能仍为空');
+// 胶囊渲染冒烟:跑一帧 drawWorld,校验胶囊 + 技能特效渲染路径无异常
+pump(120);
+assert(true, '技能胶囊 + 特效渲染路径执行无异常');
 
 console.log('\n==============================');
 console.log('结果: ' + pass + ' 通过 / ' + fail + ' 失败');

@@ -165,6 +165,7 @@
       var tex = G.Assets && G.Assets.get('alien-' + a.type);
       if (tex) {
         this._sprite(ctx, tex, a.x, a.y, r * 2.4, a.angle, flash, def.color);
+        this._alienStatus(ctx, a, r);
         if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
         return;
       }
@@ -193,7 +194,27 @@
         case 6: this._alienBoss(ctx, r, wob); break;
       }
       ctx.restore();
+      this._alienStatus(ctx, a, r);
       if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
+    },
+
+    // v0.5 技能状态叠加:冰冻=冷蓝光晕 + 减速圈;灼烧=橙色脉动(覆盖 sprite/几何两条路径)
+    _alienStatus: function (ctx, a, r) {
+      if (a.slowTimer <= 0 && a.burnTimer <= 0) return;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      if (a.slowTimer > 0) {
+        drawGlow(ctx, '#7fe0ff', a.x, a.y, r * 1.5, 0.32);   // 冰冻冷光晕
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = 'rgba(160,230,255,0.7)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(a.x, a.y, r * 1.15, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (a.burnTimer > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        var bp = 0.4 + Math.sin((a.phase || 0) * 10) * 0.2;
+        drawGlow(ctx, '#ff7a3d', a.x, a.y, r * 1.3, bp);     // 灼烧橙光脉动
+      }
+      ctx.restore();
     },
 
     _alienCrawler: function (ctx, r, wob) {
@@ -282,23 +303,31 @@
       ctx.restore();
     },
 
-    // —— 子弹:发光精灵 + 一条半透明拖尾线(替代每点一个 arc)——
+    // —— 子弹:发光精灵 + 拖尾(v0.5 按技能变体:激光粗光束 / 火焰橙拖尾 / 闪电锯齿 / 冰冻冷光)——
     bullet: function (ctx, b) {
+      var fx = b.skill && b.skill.fx;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       if (b.trail.length > 1) {
         ctx.strokeStyle = b.color;
-        ctx.lineWidth = b.radius * 1.4;
+        ctx.lineWidth = b.radius * (fx === 'laser' ? 3.0 : 1.4);   // 激光弹道更粗
         ctx.lineCap = 'round';
-        ctx.globalAlpha = 0.28;
+        ctx.globalAlpha = fx === 'fire' ? 0.4 : (fx === 'laser' ? 0.5 : 0.28);
         ctx.beginPath();
         ctx.moveTo(b.trail[0].x, b.trail[0].y);
-        for (var i = 1; i < b.trail.length; i++) ctx.lineTo(b.trail[i].x, b.trail[i].y);
+        if (fx === 'bolt') {                          // 闪电:锯齿拖尾
+          for (var i = 1; i < b.trail.length; i++) {
+            var jx = (Math.random() - 0.5) * 8, jy = (Math.random() - 0.5) * 8;
+            ctx.lineTo(b.trail[i].x + jx, b.trail[i].y + jy);
+          }
+        } else {
+          for (var k = 1; k < b.trail.length; k++) ctx.lineTo(b.trail[k].x, b.trail[k].y);
+        }
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      drawGlow(ctx, b.color, b.x, b.y, b.radius * 3);
+      drawGlow(ctx, b.color, b.x, b.y, b.radius * (fx ? 3.4 : 3));
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.55, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
@@ -320,6 +349,41 @@
       drawGlow(ctx, '#ffd166', c.x, c.y, c.r * 2.4);
       ctx.fillStyle = '#fff6cf';
       ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+
+    // —— 技能胶囊(v0.5):技能色光晕 + 旋转六边形外壳 + 中心技能标识 ——
+    powerUp: function (ctx, p) {
+      var col = p.def.color, r = p.r, t = (p.t || 0);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      // 外光晕(发光精灵)
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, col, 0, 0, r * 2.6, 0.55);
+      ctx.globalCompositeOperation = 'source-over';
+
+      // 旋转六边形外壳(脉动)
+      var pulse = 1 + Math.sin(t * 5) * 0.08;
+      ctx.rotate(t * 0.8);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = lighten(col, 0.2);
+      ctx.fillStyle = hexToRgba(col, 0.22);
+      ctx.beginPath();
+      for (var i = 0; i <= 6; i++) {
+        var ang = (i / 6) * Math.PI * 2 - Math.PI / 2;
+        var rr = r * pulse;
+        var px = Math.cos(ang) * rr, py = Math.sin(ang) * rr;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.rotate(-t * 0.8);
+
+      // 中心技能标识符号(随技能变体)
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold ' + Math.round(r * 1.1) + 'px Arial';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      var sym = { ice: '❄', fire: '🔥', bolt: '⚡', laser: '✦', multi: '◎' }[p.def.fx] || '★';
+      ctx.fillText(sym, 0, 1);
       ctx.restore();
     },
 

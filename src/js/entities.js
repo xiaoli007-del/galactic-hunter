@@ -38,9 +38,25 @@
     this.lastHitShielded = false; // 上次 takeHit 是否被护盾吸收(collision 读此决定是否反弹)
   }
   Ship.prototype.update = function (dt) {
-    // 炮口跟随指针(手动瞄准)
-    var p = G.Platform.pointer;
-    this.aimAngle = Math.atan2(p.y - this.y, p.x - this.x);
+    var p = G.Platform.pointer, cfg = G.Config, SH = cfg.SHIP;
+
+    // v0.5:飞船跟随指针位移(限下半屏活动区),实现主动闪避。
+    //   朝指针位置以最大速度逼近;若指针在活动区外则钳到边界,飞船贴边但不越界。
+    if (p.down || p.x !== 0 || p.y !== 0) {   // 有指针输入才动(避免开局被未初始化指针扯走)
+      var tx = Math.max(this.radius, Math.min(cfg.WIDTH - this.radius, p.x));
+      var ty = Math.max(SH.minY, Math.min(SH.maxY, p.y));
+      var dx = tx - this.x, dy = ty - this.y;
+      var d = Math.hypot(dx, dy) || 1;
+      var step = SH.speed * dt;
+      if (step >= d) { this.x = tx; this.y = ty; }      // 一帧可达则直接吸附,消除抖动
+      else { this.x += (dx / d) * step; this.y += (dy / d) * step; }
+    }
+
+    // v0.5:炮口自动锁最近敌人(方案 A);无目标或目标超出 aimRange 则朝指针。
+    var target = this._findTarget();
+    if (target) this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
+    else this.aimAngle = Math.atan2(p.y - this.y, p.x - this.x);
+
     if (this.hitFlash > 0) this.hitFlash -= dt;
     if (this.invuln > 0) this.invuln -= dt;
     // 护盾自动回充(防御线):有格上限、未满、且配了回充间隔才计
@@ -51,6 +67,19 @@
         this.shieldRegenTimer = this.shieldRegenDelay;
       }
     }
+  };
+  // 锁定 aimRange 内最近的活怪;Game.aliens 由 Game 同步到 ship._aliens(避免实体反向依赖 Game)
+  Ship.prototype._findTarget = function () {
+    var list = this._aliens;
+    if (!list || list.length === 0) return null;
+    var best = null, bestD2 = G.Config.SHIP.aimRange * G.Config.SHIP.aimRange;
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      if (a.dead || a.escaped) continue;
+      var dx = a.x - this.x, dy = a.y - this.y, d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { bestD2 = d2; best = a; }
+    }
+    return best;
   };
   Ship.prototype.draw = function (ctx) { G.Render.ship(ctx, this); };
   Ship.prototype.takeHit = function () {
@@ -80,20 +109,22 @@
   };
 
   // —— 子弹 ——
-  function Bullet(x, y, vx, vy, def, dmg) {
+  // v0.5:携带 skill(skillDef 或 null)。pierce 含技能加成(激光=大数=无限贯穿)。
+  function Bullet(x, y, vx, vy, def, dmg, skill) {
     this.id = newId();
     this.x = x; this.y = y; this.vx = vx; this.vy = vy;
-    this.damage = dmg != null ? dmg : def.damage;   // dmg:经船舰乘区放大后的有效伤害
-    this.color = def.color;
-    this.radius = 5;
-    this.pierce = def.pierce;       // 可穿透敌人数
+    this.damage = dmg != null ? dmg : def.damage;   // dmg:经船舰乘区 + 技能倍率放大后的有效伤害
+    this.color = (skill && skill.color) || def.color;
+    this.radius = skill ? 6 : 5;                    // 技能弹道略粗,增强视觉辨识
+    this.pierce = def.pierce + (skill && skill.pierce ? skill.pierce : 0);
+    this.skill = skill || null;                    // 激活技能定义(影响命中特效与连锁判定)
     this.hitIds = {};                // 已命中过的敌人 id,防重复
     this.trail = [];
     this.dead = false;
   }
   Bullet.prototype.update = function (dt) {
     this.trail.push({ x: this.x, y: this.y });
-    if (this.trail.length > 6) this.trail.shift();
+    if (this.trail.length > 8) this.trail.shift();
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     var cfg = G.Config;
@@ -103,7 +134,9 @@
   Bullet.prototype.hit = function (alien) {
     if (this.hitIds[alien.id]) return false;
     this.hitIds[alien.id] = true;
-    if (this.pierce <= 0) this.dead = true;
+    // 激光(无限贯穿)永不因命中而消失;其余按剩余贯穿层数扣减
+    if (this.pierce >= 9999) { /* 贯穿一切,不 dead */ }
+    else if (this.pierce <= 0) this.dead = true;
     else this.pierce -= 1;
     return true;
   };
@@ -140,13 +173,36 @@
     this.spiralTimer = 0;      // 精灵冲刺倒计时
     this.spiralDash = 0;       // 精灵冲刺剩余
     this._spiralCx = x; this._spiralCy = y;           // 螺旋中心(随下移)
+    // v0.5 技能状态:冰冻减速 / 灼烧(由 game.collisions 命中时施加)
+    this.slowTimer = 0;        // 减速剩余秒(>0 时移速×slowMul)
+    this.slowMul = 1;          // 当前减速倍率(1=正常)
+    this.burnTimer = 0;        // 灼烧剩余秒
+    this.burnDps = 0;          // 灼烧伤害/秒
+    this.burnTick = 0;         // 灼烧伤害累计(每秒结算一次,防 float 抖动)
   }
   Alien.prototype.update = function (dt) {
     this.phase += dt * 6;
     this.wob += dt * 2;
     if (this.hitFlash > 0) this.hitFlash -= dt;
 
-    var speed = this.speed;
+    // v0.5 技能状态:减速递减 + 移速乘以减速倍率;灼烧按 dps 每帧扣血(累计到 1 才结算,避免小数飘字刷屏)
+    if (this.slowTimer > 0) {
+      this.slowTimer -= dt;
+      if (this.slowTimer <= 0) this.slowMul = 1;
+    }
+    if (this.burnTimer > 0 && this.burnDps > 0 && !this.dead) {
+      this.burnTimer -= dt;
+      this.burnTick += this.burnDps * dt;
+      if (this.burnTick >= 1) {            // 每累计 1 点伤害结算一次
+        var d = Math.floor(this.burnTick);
+        this.hp -= d;
+        this.burnTick -= d;
+        this.hitFlash = 0.08;
+        if (this.hp <= 0) this.dead = true;
+      }
+    }
+
+    var speed = this.speed * this.slowMul;   // v0.5:冰冻减速作用于所有移动(含 Boss 冲刺)
     if (this.isBoss) {
       var B = G.Config.BOSS;
       // 阶段切换(按 hp 比例)
@@ -293,6 +349,27 @@
   };
   Coin.prototype.draw = function (ctx) { G.Render.coin(ctx, this); };
 
+  // —— 技能胶囊(v0.5):场上定时生成,飞船子弹击中即拾取 ——
+  //   持久生效:拾取后设为飞船 activeSkill,直到命中下一个胶囊才替换。
+  function PowerUp(skillKey, x, y) {
+    this.skillKey = skillKey;
+    this.def = G.Config.SKILLS[skillKey];
+    this.x = x; this.y = y;
+    this.baseY = y;              // 浮动基准
+    this.r = G.Config.POWERUP.radius;       // 渲染/碰撞半径(别名,供 Engine.circleHit 读 .radius)
+    this.radius = G.Config.POWERUP.radius;
+    this.life = G.Config.POWERUP.life;
+    this.dead = false; this.collected = false;
+    this.t = 0;                  // 浮动相位
+  }
+  PowerUp.prototype.update = function (dt) {
+    this.t += dt;
+    this.life -= dt;
+    if (this.life <= 0) this.dead = true;
+    this.y = this.baseY + Math.sin(this.t * G.Config.POWERUP.bobSpeed) * G.Config.POWERUP.bobAmp;
+  };
+  PowerUp.prototype.draw = function (ctx) { G.Render.powerUp(ctx, this); };
+
   // —— 飘字(伤害/积分)——
   function FloatingText(x, y, text, color, size) {
     this.x = x; this.y = y; this.text = text; this.color = color || '#fff';
@@ -310,6 +387,7 @@
   Entities.Alien = Alien;
   Entities.Particle = Particle;
   Entities.Coin = Coin;
+  Entities.PowerUp = PowerUp;
   Entities.FloatingText = FloatingText;
   G.Entities = Entities;
 })(window.G = window.G || {});

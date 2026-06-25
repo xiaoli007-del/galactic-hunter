@@ -9,7 +9,7 @@
   'use strict';
   var E = G.Engine, P = G.Platform, C = G.Config, R = G.Render, Ent = G.Entities, Snd = null;
 
-  var STATE = { MENU: 'menu', PLAYING: 'playing', GAMEOVER: 'gameover' };
+  var STATE = { MENU: 'menu', PLAYING: 'playing', GAMEOVER: 'gameover', LEADERBOARD: 'leaderboard' };
 
   // —— 布局(逻辑坐标 720×1280)——
   var TOP_H = 104, BOT_H = 156;
@@ -25,8 +25,15 @@
     shipLevel: 1,      // 船舰等级(乘区)
     defenseLevel: 1,   // 防御等级(充能护盾)
 
+    leaderboard: [],        // 本机战绩榜 Top-10(v0.4,独立存储键,避免随金币频繁写入)
+    _lastEntryTs: 0,        // 最近一次入榜记录的时间戳(榜单高亮该局用)
+    _lbReturnState: 'menu', // 排行榜返回的目标状态(从菜单/结算进入则原路返回)
+
     ship: null,
-    bullets: [], aliens: [], particles: [], coinsArr: [], texts: [],
+    bullets: [], aliens: [], particles: [], coinsArr: [], texts: [], powerups: [],
+
+    activeSkill: null,        // v0.5:当前生效技能(SKILLS 键);持久直到拾取下一个
+    powerupTimer: 0,          // 胶囊掉落倒计时
 
     spawnTimer: 0,
     killCount: 0,
@@ -36,6 +43,7 @@
 
     init: function () {
       this.loadSave();
+      this.loadLeaderboard();
       this.ship = new Ent.Ship(C);
       this._syncShipVisual();            // 船舰等级 → 飞船渲染状态(体型/光晕)
       this._applyDefense();              // 防御等级 → 护盾充能/复活状态
@@ -60,6 +68,39 @@
       });
     },
 
+    // —— 战绩排行榜(v0.4)——
+    // 独立存储键 'leaderboard',不并入 'save'(save 在每局金币拾取时频繁写入,
+    // 榜单变更频率低,分键避免无谓序列化,移植小游戏也只需在 platform.js 换实现)。
+    loadLeaderboard: function () {
+      this.leaderboard = P.getStorage('leaderboard') || [];
+    },
+    saveLeaderboard: function () {
+      P.setStorage('leaderboard', this.leaderboard);
+    },
+    // 单局结算入榜:0 分不记(避免空局占榜),降序取 Top 10;记录波次/击杀/装备便于回看
+    submitScore: function () {
+      if (this.score <= 0) return;
+      var tier = Math.floor(this.battleTime / C.WAVE.difficultyInterval);
+      var entry = {
+        score: this.score, ts: Date.now(),
+        wave: tier + 1, kills: this.killCount,
+        weapon: this.weaponLevel, ship: this.shipLevel, defense: this.defenseLevel,
+      };
+      this.leaderboard.push(entry);
+      // 同分按时间新→旧排前(后入的同分局更靠前)
+      this.leaderboard.sort(function (a, b) { return b.score - a.score || b.ts - a.ts; });
+      if (this.leaderboard.length > 10) this.leaderboard.length = 10;  // 截断 Top 10
+      this._lastEntryTs = entry.ts;
+      this.saveLeaderboard();
+    },
+    openLeaderboard: function () {
+      this._lbReturnState = this.state;          // 记下来处,返回时回退到原状态
+      this.state = STATE.LEADERBOARD;
+    },
+    closeLeaderboard: function () {
+      this.state = this._lbReturnState || STATE.MENU;
+    },
+
     startGame: function () {
       this.state = STATE.PLAYING;
       this.score = 0;
@@ -72,6 +113,10 @@
       this.particles.length = 0;
       this.coinsArr.length = 0;
       this.texts.length = 0;
+      this.powerups.length = 0;
+      this.activeSkill = null;             // v0.5:每局重置技能(开局用武器默认弹道)
+      this.powerupTimer = G.Config.POWERUP.dropEvery;   // 首个胶囊倒计时
+      this.ship._aliens = this.aliens;      // v0.5:同步目标列表给飞船自动锁敌(避免实体反向依赖 Game)
       this.ship.hp = this.ship.maxHp;
       this.ship.hitFlash = 0;
       this.ship.invuln = 1.0;
@@ -85,6 +130,7 @@
       this.state = STATE.GAMEOVER;
       this.screenFlash = 0.6;
       if (this.score > this.highScore) { this.highScore = this.score; }
+      this.submitScore();          // v0.4:本局入榜(0 分不记)
       this.save();
     },
 
@@ -135,20 +181,25 @@
     },
 
     // —— 开火 ——
+    // v0.5:activeSkill 叠加在武器之上 ——
+    //   spread(双/三/四发)覆盖武器弹道数;damageMul(火焰)放大单发;pierce(激光)加贯穿层;
+    //   技能弹道色覆盖武器色。无技能时用武器默认。技能持久,直到拾取下一个胶囊。
     fire: function (w) {
       Snd && Snd.play('fire');
       var a = this.ship.aimAngle;
-      var n = w.spread, step = 0.12;
+      var sk = this.activeSkill ? C.SKILLS[this.activeSkill] : null;
+      var n = (sk && sk.spread) ? sk.spread : w.spread;   // 技能弹道数覆盖武器
+      var step = 0.12;
       var ox = Math.cos(a) * this.ship.radius * 1.1;
       var oy = Math.sin(a) * this.ship.radius * 1.1;
       var fireMul = C.SHIPS[this.shipLevel].fireMul;   // 船舰乘区:放大武器单发伤害
-      var dmg = w.damage * fireMul;
+      var dmg = w.damage * fireMul * (sk && sk.damageMul ? sk.damageMul : 1);  // 火焰 ×1.8
       for (var i = 0; i < n; i++) {
         var off = n === 1 ? 0 : (i - (n - 1) / 2) * step;
         var ang = a + off;
         var b = new Ent.Bullet(
           this.ship.x + ox, this.ship.y + oy,
-          Math.cos(ang) * w.speed, Math.sin(ang) * w.speed, w, dmg);
+          Math.cos(ang) * w.speed, Math.sin(ang) * w.speed, w, dmg, sk);
         this.bullets.push(b);
       }
     },
@@ -171,6 +222,21 @@
         Snd && Snd.play('boss');
       }
       if (this.killCount % C.WAVE.bossEveryKills !== 0) this._bossSpawned = false;
+
+      // v0.5:定时掉落技能胶囊
+      this.powerupTimer -= dt;
+      if (this.powerupTimer <= 0 && this.powerups.length < C.POWERUP.maxOnScreen) {
+        this.spawnPowerUp();
+        this.powerupTimer = C.POWERUP.dropEvery;
+      }
+    },
+
+    // v0.5:按权重池随机一个技能,在上半屏随机位置生成胶囊
+    spawnPowerUp: function () {
+      var key = E.weighted(C.POWERUP_POOL, C.POWERUP_WEIGHTS);
+      var x = E.rand(80, C.WIDTH - 80);
+      var y = C.POWERUP.spawnY + E.rand(-40, 40);
+      this.powerups.push(new Ent.PowerUp(key, x, y));
     },
 
     spawnAlien: function (tier, forceType) {
@@ -196,11 +262,12 @@
       for (var k = 0; k < this.particles.length; k++) this.particles[k].update(dt);
       for (var m = 0; m < this.texts.length; m++) this.texts[m].update(dt);
       for (var n = 0; n < this.coinsArr.length; n++) this.coinsArr[n].update(dt, this.ship);
+      for (var p = 0; p < this.powerups.length; p++) this.powerups[p].update(dt);
     },
 
     // —— 碰撞结算 ——
     collisions: function () {
-      // 子弹 ↔ 怪物
+      // 子弹 ↔ 怪物(含技能效果:减速 / 灼烧 / 连锁)
       for (var i = 0; i < this.bullets.length; i++) {
         var b = this.bullets[i];
         if (b.dead) continue;
@@ -209,9 +276,26 @@
           if (a.dead) continue;
           if (E.circleHit(b, a)) {
             if (!b.hit(a)) continue;          // 已命中过则跳过
-            a.takeDamage(b.damage);
-            this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '-' + Math.round(b.damage), '#fff', 18));
+            this._applyBulletHit(b, a);
             if (a.dead) { this.killAlien(a); Snd && Snd.play('kill'); }
+            // v0.5 闪电:命中后连锁到附近 N 只怪(部分伤害),用子弹色画电弧
+            if (b.skill && b.skill.chain) this._chainLightning(b, a);
+            // 激光/贯穿弹可继续打下一个目标,普通弹命中即 dead(b.hit 已处理)
+            if (b.dead) break;
+          }
+        }
+      }
+      // 子弹 ↔ 技能胶囊(击中即拾取,设为当前技能;贯穿弹不消失,可连拾多个→取最后命中)
+      for (var pi = 0; pi < this.bullets.length; pi++) {
+        var pb = this.bullets[pi];
+        if (pb.dead) continue;
+        for (var pj = 0; pj < this.powerups.length; pj++) {
+          var pu = this.powerups[pj];
+          if (pu.dead || pu.collected) continue;
+          if (E.circleHit(pb, pu)) {
+            pu.collected = true; pu.dead = true;
+            this._pickupSkill(pu);
+            if (pb.pierce < 9999) pb.dead = true;   // 普通弹拾取后消失,激光贯穿弹继续飞
             break;
           }
         }
@@ -235,6 +319,55 @@
           }
         }
       }
+    },
+
+    // v0.5:子弹命中结算伤害 + 施加技能状态(冰冻减速 / 火焰灼烧)
+    _applyBulletHit: function (b, a) {
+      a.takeDamage(b.damage);
+      this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '-' + Math.round(b.damage), b.color, 18));
+      if (b.skill) {
+        if (b.skill.slowMul) {                       // 冰冻
+          a.slowMul = b.skill.slowMul;
+          a.slowTimer = b.skill.slowDur;
+        }
+        if (b.skill.burnDps) {                       // 火焰灼烧
+          a.burnDps = b.skill.burnDps;
+          a.burnTimer = b.skill.burnDur;
+          a.burnTick = 0;
+        }
+      }
+    },
+
+    // v0.5 闪电连锁:从命中怪向附近 chain 只怪各造成 chainDmgMul×伤害,画电弧 + 飘字
+    _chainLightning: function (b, src) {
+      var hit = [src.id];
+      var remain = b.skill.chain;
+      for (var i = 0; i < this.aliens.length && remain > 0; i++) {
+        var t = this.aliens[i];
+        if (t.dead || t === src) continue;
+        if (hit.indexOf(t.id) >= 0) continue;
+        var d2 = E.dist2(src.x, src.y, t.x, t.y);
+        if (d2 < 220 * 220) {                        // 连锁半径 220
+          hit.push(t.id);
+          var dmg = b.damage * b.skill.chainDmgMul;
+          t.takeDamage(dmg);
+          this.particles.push(new Ent.Particle((src.x + t.x) / 2, (src.y + t.y) / 2, 0, 0, 3, b.skill.color, 0.25));
+          if (t.dead) { this.killAlien(t); }
+          remain--;
+        }
+      }
+    },
+
+    // v0.5 拾取技能:设为当前技能(持久生效直到下一个);飘字 + 短闪反馈
+    _pickupSkill: function (pu) {
+      var prev = this.activeSkill;
+      this.activeSkill = pu.skillKey;
+      var def = pu.def;
+      var isNew = prev !== pu.skillKey;
+      this.texts.push(new Ent.FloatingText(pu.x, pu.y - 18, isNew ? ('获得 ' + def.label + '!') : (def.label + ' 刷新'),
+        def.color, 22));
+      this.screenFlash = 0.2;
+      Snd && Snd.play('upgrade');   // 复用升级音效(上扬提示),避免新增音色
     },
 
     // 反射力场反伤:对怪物造成反弹伤害,可能直接击杀并走掉落链路
@@ -303,6 +436,7 @@
       var gained = 0;
       this.bullets = this.bullets.filter(function (b) { return !b.dead; });
       this.aliens = this.aliens.filter(function (a) { return !a.dead && !a.escaped; });
+      this.powerups = this.powerups.filter(function (p) { return !p.dead; });
       this.particles = this.particles.filter(function (p) { return !p.dead; });
       if (this.particles.length > 240) this.particles.splice(0, this.particles.length - 240);
       this.texts = this.texts.filter(function (t) { return !t.dead; });
@@ -407,6 +541,7 @@
       if (this.state === STATE.PLAYING) this.drawHUD(ctx);
       if (this.state === STATE.MENU) this.drawMenu(ctx);
       if (this.state === STATE.GAMEOVER) this.drawGameOver(ctx);
+      if (this.state === STATE.LEADERBOARD) this.drawLeaderboard(ctx);
 
       R.flash(ctx, this.screenFlash, this.state === STATE.GAMEOVER ? '#ff3d6e' : '#ffffff');
 
@@ -423,6 +558,7 @@
       ctx.restore();
 
       for (var i = 0; i < this.aliens.length; i++) this.aliens[i].draw(ctx);
+      for (var pu = 0; pu < this.powerups.length; pu++) this.powerups[pu].draw(ctx);
       for (var j = 0; j < this.bullets.length; j++) this.bullets[j].draw(ctx);
       for (var k = 0; k < this.particles.length; k++) this.particles[k].draw(ctx);
       for (var m = 0; m < this.coinsArr.length; m++) this.coinsArr[m].draw(ctx);
@@ -450,6 +586,22 @@
       ctx.fillText('金币 COIN', W - 24, 34);
       ctx.fillStyle = '#fff'; ctx.font = 'bold 34px Arial';
       ctx.fillText(this.coins, W - 24, 72);
+      ctx.restore();
+
+      // v0.5:当前技能指示(顶栏中部,HP 上方)。无技能时灰显「标准弹道」
+      var sk = this.activeSkill ? C.SKILLS[this.activeSkill] : null;
+      ctx.save();
+      ctx.textAlign = 'center';
+      var chipW = 168, chipH = 26, chipX = W / 2 - chipW / 2, chipY = 6;
+      ctx.fillStyle = sk ? this._hexA(sk.color, 0.18) : 'rgba(255,255,255,0.06)';
+      this._roundRect(ctx, chipX, chipY, chipW, chipH, 8); ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = sk ? this._hexA(sk.color, 0.8) : 'rgba(255,255,255,0.2)';
+      this._roundRect(ctx, chipX, chipY, chipW, chipH, 8); ctx.stroke();
+      ctx.fillStyle = sk ? sk.color : 'rgba(255,255,255,0.5)';
+      ctx.font = 'bold 13px Arial'; ctx.textBaseline = 'middle';
+      ctx.fillText('⚡ ' + (sk ? sk.name : '标准弹道'), W / 2, chipY + chipH / 2 + 1);
+      ctx.textBaseline = 'alphabetic';
       ctx.restore();
 
       // 音效开关(右上角小图标)
@@ -577,9 +729,13 @@
       if (this._button(ctx, bx, by, bw, bh, '▶  开始游戏', true, false)) this.startGame();
 
       ctx.fillStyle = 'rgba(255,209,102,0.8)'; ctx.font = 'bold 18px Arial';
-      ctx.fillText('最高分  ' + this.highScore, W / 2, by + bh + 40);
+      ctx.fillText('最高分  ' + this.highScore, W / 2, by + bh + 38);
+
+      var lbw = 280, lbh = 50, lbx = W / 2 - lbw / 2, lby = by + bh + 64;
+      if (this._button(ctx, lbx, lby, lbw, lbh, '🏆  战 绩 排 行 榜', true, true)) this.openLeaderboard();
+
       ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '13px Arial';
-      ctx.fillText('v0.2.2 · AI 协作设计', W / 2, H - 30);
+      ctx.fillText('v0.4 · AI 协作设计', W / 2, H - 30);
       ctx.restore();
     },
 
@@ -610,7 +766,83 @@
 
       var bw = 280, bh = 70, bx = W / 2 - bw / 2, by = H / 2 + 100;
       if (this._button(ctx, bx, by, bw, bh, '↻  再 战 一 局', true, false)) this.startGame();
+      var lbw2 = 280, lbh2 = 48, lbx2 = W / 2 - lbw2 / 2, lby2 = by + bh + 18;
+      if (this._button(ctx, lbx2, lby2, lbw2, lbh2, '🏆  查 看 排 行 榜', true, true)) this.openLeaderboard();
       ctx.restore();
+    },
+
+    // —— 排行榜(v0.4):本机 Top 10 战绩 ——
+    drawLeaderboard: function (ctx) {
+      var W = C.WIDTH, H = C.HEIGHT;
+      ctx.save();
+      ctx.fillStyle = 'rgba(5,7,14,0.84)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+
+      ctx.fillStyle = '#ffd166';
+      ctx.shadowColor = '#ffd166'; ctx.shadowBlur = 20;
+      ctx.font = 'bold 44px Arial';
+      ctx.fillText('战 绩 排 行 榜', W / 2, 118);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '15px Arial';
+      ctx.fillText('本机最高分 Top 10', W / 2, 148);
+
+      if (this.leaderboard.length === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '20px Arial';
+        ctx.fillText('暂无记录,去战斗吧!', W / 2, H / 2);
+      } else {
+        var top = 188, rowH = 74, listW = 620, listX = (W - listW) / 2;
+        for (var i = 0; i < this.leaderboard.length; i++) {
+          this._leaderRow(ctx, listX, top + i * rowH, listW, rowH, i, this.leaderboard[i]);
+        }
+      }
+
+      var bbW = 260, bbH = 60, bbX = W / 2 - bbW / 2, bbY = H - 120;
+      if (this._button(ctx, bbX, bbY, bbW, bbH, '◀  返 回', true, false)) this.closeLeaderboard();
+      ctx.restore();
+    },
+
+    // 榜单单行:名次(前三名金银铜色)+ 积分 + 日期 + 波次/击杀/装备详情;
+    // 本局刚入榜的记录(ts 匹配 _lastEntryTs)高亮金底,便于玩家找到自己这局。
+    _leaderRow: function (ctx, x, y, w, h, idx, e) {
+      var isLast = e.ts === this._lastEntryTs && this._lastEntryTs > 0;
+      ctx.save();
+      ctx.fillStyle = isLast ? 'rgba(255,209,102,0.16)' : 'rgba(90,209,255,0.08)';
+      this._roundRect(ctx, x, y, w, h, 10); ctx.fill();
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = isLast ? 'rgba(255,209,102,0.7)' : 'rgba(90,209,255,0.3)';
+      this._roundRect(ctx, x, y, w, h, 10); ctx.stroke();
+
+      var rankColors = ['#ffd166', '#cfd8e3', '#cd7f32'];   // 金/银/铜
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = idx < 3 ? rankColors[idx] : 'rgba(255,255,255,0.55)';
+      ctx.font = 'bold 30px Arial';
+      ctx.fillText((idx + 1) + '.', x + 22, y + h / 2 + 2);
+
+      ctx.fillStyle = isLast ? '#ffd166' : '#7df0c0';
+      ctx.font = 'bold 30px Arial';
+      ctx.fillText(e.score, x + 86, y + h / 2 + 2);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '13px Arial';
+      ctx.fillText(this._fmtDate(e.ts), x + w - 22, y + 26);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText('波次 ' + e.wave + ' · 击杀 ' + e.kills + ' · 武' + e.weapon + ' 船' + e.ship + ' 防' + e.defense,
+        x + w - 22, y + h - 22);
+      ctx.restore();
+    },
+
+    _fmtDate: function (ts) {
+      function pad(n) { return n < 10 ? '0' + n : '' + n; }
+      var d = new Date(ts);
+      return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    },
+    // hex → rgba 字符串(技能芯片配色用;render.js 有同名能力但未导出,此处内联避免耦合)
+    _hexA: function (hex, a) {
+      var h = hex.replace('#', '');
+      if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      return 'rgba(' + parseInt(h.substr(0, 2), 16) + ',' + parseInt(h.substr(2, 2), 16) + ',' +
+        parseInt(h.substr(4, 2), 16) + ',' + a + ')';
     },
 
     // —— 科幻按钮(绘制 + 点击检测,justPressed 单帧消费)——
@@ -663,7 +895,7 @@
       ctx.restore();
 
       var btnW = o.w || 220, btnH = 46, btnX = x, btnY = top + 58;
-      var label = o.maxed ? o.maxedLabel : ('升级 ▲ ' + o.cost);
+      var label = o.maxed ? o.maxedLabel : ('升级 ▲ ' + o.cost + ' 金币');
       var clicked = this._button(ctx, btnX, btnY, btnW, btnH, label, o.canBuy || o.maxed, o.maxed);
       return clicked && !o.maxed;     // 满级时点击仅消费不升级
     },
