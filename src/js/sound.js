@@ -51,6 +51,10 @@
         case 'reflect':
           A.tone(660, 0.08, 'sine', 0.1, 990);         // 反弹"咻"
           break;
+        case 'enemyFire':
+          // v0.8 敌弹发射提示:短促低频锯齿下行,警示"敌方开火"
+          A.tone(240, 0.05, 'sawtooth', 0.05, 160);
+          break;
       }
     },
   };

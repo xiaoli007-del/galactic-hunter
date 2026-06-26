@@ -503,24 +503,24 @@ assert(Game.activeSkill === null, '胶囊未拾取前技能仍为空');
 pump(120);
 assert(true, '技能胶囊 + 特效渲染路径执行无异常');
 
-console.log('\n[10] 美术系统渲染冒烟(v0.8:雷电风飞船 + t1-t10 怪物生态 + 敌弹/预警)');
-// 飞船 Lv1..Lv5:逐级组装模块(引擎/机翼/船体/座舱罩/武器/反应堆核心),渲染路径无异常
+console.log('\n[10] 美术系统渲染冒烟(v0.6:飞船模块化进化 + 怪物生态)');
+// 飞船 Lv1..Lv5:逐级组装模块(引擎/机翼/船体/武器/能量核心),渲染路径无异常
 Game.startGame(); Game.activeSkill = null;
 for (var lv = 1; lv <= 5; lv++) {
   Game.shipLevel = lv; Game._syncShipVisual();
   Game.ship.update(0.02);
   Game.ship.draw(makeCtx());
 }
-assert(true, '飞船 Lv1→Lv5 雷电风渲染路径执行无异常');
+assert(true, '飞船 Lv1→Lv5 模块化渲染路径执行无异常');
 // 受击闪白路径
 Game.ship.hitFlash = 0.2; Game.ship.draw(makeCtx()); Game.ship.hitFlash = 0;
 assert(true, '飞船受击闪白渲染路径无异常');
-// 怪物 t1..t10:每种独立轮廓 + 发光弱点核心(Boss 自带多核心),渲染路径无异常
-for (var tk = 1; tk <= 10; tk++) {
+// 怪物 t1..t6:每种独立轮廓 + 发光弱点核心,渲染路径无异常
+for (var tk = 1; tk <= 6; tk++) {
   var al = new G.Entities.Alien('t' + tk, G.Config.WIDTH / 2, 400);
   al.draw(makeCtx());
 }
-assert(true, '怪物 t1→t10 生态渲染路径执行无异常(含 t7-t10 新增)');
+assert(true, '怪物 t1→t6 生态渲染路径执行无异常');
 // 怪物受击闪白 + 状态(冰冻/灼烧)叠加渲染
 var stAlien = new G.Entities.Alien('t3', 360, 500);
 stAlien.hitFlash = 0.2; stAlien.draw(makeCtx());
@@ -530,15 +530,6 @@ assert(true, '怪物闪白/冰冻/灼烧状态叠加渲染无异常');
 // 受伤血条渲染(hp < maxHp)
 var hurt = new G.Entities.Alien('t5', 360, 600); hurt.hp = 10; hurt.draw(makeCtx());
 assert(true, '怪物血条渲染路径无异常');
-// v0.8 预警渲染:突进(lunge)/开火(gunner/aimed)瞄准线,校验虚线/光晕路径无异常
-var tgL = new G.Entities.Alien('t7', 360, 500); tgL.telegraph = 0.3; tgL.telegraphType = 'lunge'; tgL._lungeTx = 360; tgL.draw(makeCtx());
-var tgG = new G.Entities.Alien('t8', 360, 500); tgG.telegraph = 0.3; tgG.telegraphType = 'gunner'; tgG.draw(makeCtx());
-var tgA = new G.Entities.Alien('t9', 360, 500); tgA.telegraph = 0.3; tgA.telegraphType = 'aimed'; tgA.draw(makeCtx());
-assert(true, '预警(突进/开火/瞄准扇形)渲染路径无异常');
-// v0.8 敌弹渲染:发光精灵 + 渐变弹体 + 自旋十字弹核
-var eb = new G.Entities.EnemyBullet(360, 500, 0, 200, '#b14dff');
-eb.draw(makeCtx()); eb.update(0.02); eb.draw(makeCtx());
-assert(true, '敌弹渲染 + 更新路径无异常');
 // 飞船技能弹道变体渲染(各 fx 路径:激光/火/闪电/冰/multi)
 Game.startGame();
 ['ice', 'fire', 'bolt', 'laser', 'multi2', 'multi3', 'multi4'].forEach(function (sk) {
@@ -550,88 +541,171 @@ assert(true, '各技能弹道变体渲染路径无异常');
 Game.startGame(); Game.activeSkill = 'fire';
 P.pointer.x = 360; P.pointer.y = 1000; P.pointer.down = true;
 pump(400);
-assert(true, '完整 render 帧(飞船/怪物/技能/胶囊/敌弹/HUD)无异常');
+assert(true, '完整 render 帧(飞船/怪物/技能/胶囊/HUD)无异常');
 
-console.log('\n[11] v0.8 新内容:敌弹 / 撕裂者突进 / 守卫者射击 / Boss 弹幕 / Boss 轮换');
-// —— 敌弹工厂:单发 / 环形 / 瞄准扇形 ——
+// ==================== v0.8:新内容(精英/Boss/敌弹)====================
+console.log('\n[11] v0.8 新内容 — 配置与实体');
+assert(G.Config.ALIENS.t7.behavior === 'dash', 't7 撕裂者标记 dash 行为');
+assert(G.Config.ALIENS.t8.fire.pattern === 'aimed', 't8 守卫者 aimed 敌弹');
+assert(G.Config.ALIENS.t9.boss === true && G.Config.ALIENS.t9.fire.stages, 't9 钢铁巨像 Boss + 阶段弹幕');
+assert(G.Config.ALIENS.t10.boss === true && G.Config.ALIENS.t10.summonType === 't2', 't10 虚空吞噬者 Boss + 召唤override');
+assert(JSON.stringify(G.Config.WAVE.bossRotation) === '["t6","t9","t10"]', 'Boss 轮换序列 t6→t9→t10');
+assert(G.Config.ENEMY_BULLET.damage === 1, '敌弹伤害=1(走护盾/hp 同路径)');
+assert(typeof G.Entities.EnemyBullet === 'function', 'EnemyBullet 实体已导出');
+// t7 非 Boss、不发弹;Boss 标志统一(向后兼容 t6)
+assert(new G.Entities.Alien('t7', 100, 100).isBoss === false, 't7 非 Boss');
+assert(new G.Entities.Alien('t6', 100, 100).isBoss === true, 't6 仍判定为 Boss(向后兼容 tier===6)');
+
+console.log('\n[12] v0.8 敌弹生成/移动/回收');
 Game.startGame();
-var eb0 = Game.enemyBullets.length;
-Game._fireRing(360, 400, 12, 200, '#ff5c2a');
-assert(Game.enemyBullets.length === eb0 + 12, '环形弹幕生成 12 发敌弹 (got ' + (Game.enemyBullets.length - eb0) + ')');
-Game._fireAimedSpread(360, 400, 3, 0.2, 250, '#ffaa00');
-assert(Game.enemyBullets.length === eb0 + 15, '瞄准扇形追加 3 发 (got ' + (Game.enemyBullets.length - eb0) + ')');
-// 敌弹离屏销毁
-Game.enemyBullets.forEach(function (e) { e.x = -999; });
-pump(40);
-assert(Game.enemyBullets.length === 0, '敌弹离屏后全部销毁');
-// 同屏上限:_fireEnemyBullet 超限丢弃,不抛异常
 Game.enemyBullets.length = 0;
-for (var i = 0; i < G.Config.ENEMY_BULLETS.maxOnScreen + 50; i++) Game._fireEnemyBullet(0, 0, 0, 1, '#fff');
-assert(Game.enemyBullets.length === G.Config.ENEMY_BULLETS.maxOnScreen, '敌弹受同屏上限约束 (' + Game.enemyBullets.length + ')');
+var eb = new G.Entities.EnemyBullet(100, 100, 0, 200, '#ff5470');
+Game.enemyBullets.push(eb);
+Game.updateEntities(0.02);             // 移动
+assert(eb.y > 100, '敌弹移动生效 (y 100 → ' + eb.y.toFixed(1) + ')');
+assert(eb.trail.length > 0, '敌弹拖尾记录');
+eb.x = G.Config.WIDTH + 100;            // 推出屏幕
+Game.updateEntities(0.02);
+assert(eb.dead === true, '敌弹出界标记回收');
+Game.cleanup();
+assert(Game.enemyBullets.length === 0, '出界敌弹被清理 (剩 ' + Game.enemyBullets.length + ')');
 
-// —— t7 撕裂者:巡航 → 预警 → 突进 ——
+console.log('\n[13] v0.8 敌弹↔飞船碰撞(走护盾消格)');
 Game.startGame();
-var rip = new G.Entities.Alien('t7', 360, 200);
+Game.defenseLevel = 2; Game._applyDefense();   // 能量护盾 1 格
+Game.ship.invuln = 0;
+Game.enemyBullets.length = 0;
+var eb2 = new G.Entities.EnemyBullet(Game.ship.x, Game.ship.y - 5, 0, 0, '#ff5470');
+Game.enemyBullets.push(eb2);
+var sh2 = Game.ship.shield, hp2 = Game.ship.hp;
+Game.collisions();
+assert(Game.ship.shield === sh2 - 1, '敌弹命中消一格护盾 (shield ' + sh2 + ' → ' + Game.ship.shield + ')');
+assert(Game.ship.hp === hp2, '护盾吸收时 hp 不变 (hp ' + hp2 + ')');
+assert(eb2.dead === true, '命中后敌弹销毁');
+// 无敌帧内敌弹穿过(不销毁,雷电式无敌穿透)
+Game.startGame();
+Game.ship.invuln = 1.0;                 // 开局无敌
+Game.enemyBullets.length = 0;
+var eb3 = new G.Entities.EnemyBullet(Game.ship.x, Game.ship.y, 0, 0, '#ff5470');
+Game.enemyBullets.push(eb3);
+Game.collisions();
+assert(eb3.dead === false, '无敌帧内敌弹穿过不销毁 (invuln=' + Game.ship.invuln + ')');
+
+console.log('\n[14] v0.8 t7 撕裂者 — 预警→锁定→突进');
+Game.startGame();
+var rip = new G.Entities.Alien('t7', G.Config.WIDTH / 2, 200);
 Game.aliens.push(rip);
-// 强制进入预警(跳过冷却):telegraph 倒计时归零后下一帧触发 telegraph 设置
-rip.lungeTimer = 0;
-pump(60);
-assert(rip.telegraph > 0 || rip.lungeDash > 0, '撕裂者进入预警或突进 (telegraph=' + rip.telegraph + ', dash=' + rip.lungeDash + ')');
-// 推进到突进发生:预警结束后 lungeDash>0,飞船横移后锁定 x 应偏离(可躲)
-P.pointer.x = 100; P.pointer.y = 1100; P.pointer.down = true;
-pump(800);
-assert(rip.lungeDash > 0 || rip.y > 200, '撕裂者完成一次突进循环');
+assert(rip._dashTele === 0 && rip._repos === 0.8, 't7 初始缓速下移状态');
+rip.update(1.0);                        // 进入循环,启动 _dashTele
+assert(rip._dashTele > 0, '进入预警蓄能 (_dashTele=' + rip._dashTele.toFixed(2) + ')');
+rip._dashArmed = false;                 // 重置以触发锁向断言
+rip.update(0.05);                        // 触发 _lockDashAim
+assert(rip._dashArmed === true, '预警期锁定突进方向');
+var dashDx = rip._dashDx, dashDy = rip._dashDy;
+var mag = Math.hypot(dashDx, dashDy);
+assert(mag > 0.99 && mag < 1.01, '锁向单位向量 (_dashDx,_dashDy 长度 ' + mag.toFixed(3) + ')');
+rip._dashTele = 0.01; rip.update(0.05); // 蓄能结束→突进
+assert(rip._dashDur > 0, '蓄能结束进入突进 (_dashDur=' + rip._dashDur.toFixed(2) + ')');
+var xBefore = rip.x, yBefore = rip.y;
+rip.update(0.05);                        // 突进位移
+assert(Math.hypot(rip.x - xBefore, rip.y - yBefore) > 0, '突进产生位移');
 
-// —— t8 守卫者:预警 → 朝飞船发射敌弹 ——
+console.log('\n[15] v0.8 t8 守卫者 — 瞄准敌弹发射');
 Game.startGame();
+var gd = new G.Entities.Alien('t8', G.Config.WIDTH / 2, 200);
+Game.aliens.push(gd);
+gd.fireTimer = 0.05;                    // 即将到点
+gd.update(0.1);                         // _updateFire 到点 → _enemyFire 生成 aimed 扇形
+assert(Game.enemyBullets.length === 3, 'aimed 发射 3 发扇形敌弹 (得 ' + Game.enemyBullets.length + ')');
+var ebCol = Game.enemyBullets[0].color;
+assert(ebCol === '#ff8c42', '敌弹用怪色染色 (' + ebCol + ')');
+// 弹幕上限保护
 Game.enemyBullets.length = 0;
-var gud = new G.Entities.Alien('t8', 360, 200);
-Game.aliens.push(gud);
-gud.fireTimer = 0;
-pump(900);   // 推进越过 gunnerEvery + gunnerTelegraph,应至少开火一次
-assert(Game.enemyBullets.length > 0, '守卫者开火生成敌弹 (got ' + Game.enemyBullets.length + ' 发)');
+G.Config.ENEMY_BULLET.maxOnScreen = 2;
+gd._aimArmed = false; gd.fireTimer = 0.05;
+gd.update(0.1);
+assert(Game.enemyBullets.length === 2, '敌弹上限保护 (上限2,得 ' + Game.enemyBullets.length + ')');
+G.Config.ENEMY_BULLET.maxOnScreen = 90; // 复位
 
-// —— t9 钢铁巨像:环形 + 瞄准弹幕 ——
+console.log('\n[16] v0.8 t9 钢铁巨像 — 多阶段弹幕(spiral/ring)');
 Game.startGame();
-Game.enemyBullets.length = 0;
-var col = new G.Entities.Alien('t9', 360, 300);
+var col = new G.Entities.Alien('t9', G.Config.WIDTH / 2, 200);
 Game.aliens.push(col);
-pump(2400);   // 推进越过 radialEvery + aimedEvery
-assert(Game.enemyBullets.length > 0, '钢铁巨像发射弹幕 (got ' + Game.enemyBullets.length + ' 发)');
-assert(col.isBoss === true && col.pattern === 'colossus', '巨像 isBoss + pattern=colossus');
-
-// —— t10 虚空吞噬者:三阶段螺旋 + 环形 + 瞄准 ——
-Game.startGame();
+assert(col.bossStage === 1, 't9 初始阶段1(aimed)');
+// 推进到阶段2:spiral 多臂
+col.takeDamage(Math.ceil(col.maxHp * 0.4));   // hp → 60%,进阶段2
+col.update(0.02);
+assert(col.bossStage === 2, 'hp≤66% 进阶段2 (stage=' + col.bossStage + ')');
 Game.enemyBullets.length = 0;
-var dev = new G.Entities.Alien('t10', 360, 300);
-Game.aliens.push(dev);
-pump(1600);
-assert(Game.enemyBullets.length > 0, '吞噬者持续螺旋发射敌弹 (got ' + Game.enemyBullets.length + ' 发)');
-assert(dev.isBoss === true && dev.pattern === 'devourer', '吞噬者 isBoss + pattern=devourer');
-// t10 不召唤/不冲刺(t6 专属),即便低血也不触发 summon/dash
-dev.hp = 1; dev.update(0.02);
-assert(dev.summon === false && dev.dash === false, '吞噬者无召唤/冲刺(t6 专属)');
+col.fireTimer = 0.05; col.update(0.2);   // spiral 到点
+assert(Game.enemyBullets.length === 3, '阶段2 spiral 每次发射3臂 (得 ' + Game.enemyBullets.length + ')');
+// 推进到阶段3:ring 全圆
+col.takeDamage(Math.ceil(col.maxHp * 0.4));
+col.update(0.02);
+assert(col.bossStage === 3, 'hp≤33% 进阶段3 (stage=' + col.bossStage + ')');
+Game.enemyBullets.length = 0;
+col.fireTimer = 0.05; col.update(0.3);   // ring 到点
+assert(Game.enemyBullets.length === 18, '阶段3 ring 发射18发全圆 (得 ' + Game.enemyBullets.length + ')');
 
-// —— Boss 轮换:每 60 击杀循环 t6 → t9 → t10 ——
+console.log('\n[17] v0.8 t10 虚空吞噬者 — 多阶段 + 召唤override');
 Game.startGame();
-Game._bossCount = 0; Game.killCount = 0; Game._bossSpawned = false;
-var rot = G.Config.WAVE.bossRotation;
-Game.killCount = 60; Game.updateWaves(0);   // 第 1 个 Boss
-assert(Game.aliens.length >= 1 && Game.aliens[Game.aliens.length - 1].type === rot[0], '第 1 个 Boss = ' + rot[0] + ' (got ' + Game.aliens[Game.aliens.length - 1].type + ')');
-Game.aliens.length = 0; Game._bossSpawned = false; Game.killCount = 120; Game.updateWaves(0);
-assert(Game.aliens[Game.aliens.length - 1].type === rot[1], '第 2 个 Boss = ' + rot[1] + ' (got ' + Game.aliens[Game.aliens.length - 1].type + ')');
-Game.aliens.length = 0; Game._bossSpawned = false; Game.killCount = 180; Game.updateWaves(0);
-assert(Game.aliens[Game.aliens.length - 1].type === rot[2], '第 3 个 Boss = ' + rot[2] + ' (got ' + Game.aliens[Game.aliens.length - 1].type + ')');
-Game.aliens.length = 0; Game._bossSpawned = false; Game.killCount = 240; Game.updateWaves(0);
-assert(Game.aliens[Game.aliens.length - 1].type === rot[0], '第 4 个 Boss 回到 ' + rot[0] + ' (轮换循环)');
+var vd = new G.Entities.Alien('t10', G.Config.WIDTH / 2, 200);
+Game.aliens.push(vd);
+assert(vd.isBoss === true, 't10 标记 Boss');
+vd.bossStage = 2; vd.summonTimer = 0;
+var aliensBefore = Game.aliens.length;
+Game._bossSummon(vd);                    // 用 override summonType=t2 / count=3
+var summoned = Game.aliens.length - aliensBefore;
+assert(summoned === 3, 't10 override 召唤3只t2 (增 ' + summoned + ')');
+// spiral 弹幕(阶段1:4臂)
+Game.enemyBullets.length = 0;
+vd.bossStage = 1; vd.fireTimer = 0.05; vd.update(0.2);
+assert(Game.enemyBullets.length === 4, 't10 阶段1 spiral 4臂 (得 ' + Game.enemyBullets.length + ')');
 
-// —— bossOnly 排除:t9/t10 不进普通刷新池 ——
-Game.startGame(); Game.aliens.length = 0;
-var seen = {};
-for (var s = 0; s < 200; s++) { Game.spawnAlien(8); }   // 高难度档大量刷新
-Game.aliens.forEach(function (a) { seen[a.type] = true; });
-assert(seen['t9'] !== true && seen['t10'] !== true, 't9/t10 不进普通刷新池 (bossOnly)');
-assert(seen['t6'] === true || seen['t7'] === true || seen['t8'] === true, '普通池仍含可刷新怪 (t6/t7/t8)');
+console.log('\n[18] v0.8 Boss 轮换 t6→t9→t10');
+Game.startGame();
+assert(Game._bossIdx === 0, '开局 _bossIdx=0(首 Boss 恒 t6)');
+// 模拟击杀到 boss 触发点
+Game.killCount = G.Config.WAVE.bossEveryKills;
+Game.updateWaves(0.01);
+var lastBoss = Game.aliens[Game.aliens.length - 1];
+assert(lastBoss.type === 't6', '第1次触发 → t6 (idx→' + Game._bossIdx + ')');
+assert(Game._bossIdx === 1, '_bossIdx 递增到 1');
+// 下一个触发点 → t9
+Game.killCount = G.Config.WAVE.bossEveryKills * 2;
+Game.aliens.length = 0; Game._bossSpawned = false;
+Game.updateWaves(0.01);
+var boss2 = Game.aliens[Game.aliens.length - 1];
+assert(boss2.type === 't9', '第2次触发 → t9 (轮换生效)');
+// 第3次 → t10,第4次 → 回 t6(循环)
+Game.killCount = G.Config.WAVE.bossEveryKills * 3;
+Game.aliens.length = 0; Game._bossSpawned = false;
+Game.updateWaves(0.01);
+assert(Game.aliens[Game.aliens.length - 1].type === 't10', '第3次触发 → t10');
+Game.killCount = G.Config.WAVE.bossEveryKills * 4;
+Game.aliens.length = 0; Game._bossSpawned = false;
+Game.updateWaves(0.01);
+assert(Game.aliens[Game.aliens.length - 1].type === 't6', '第4次触发 → 回 t6(循环)');
+
+console.log('\n[19] v0.8 新怪 + 敌弹渲染路径');
+// t7 预警/突进两态 + t8 蓄能态渲染
+var rip2 = new G.Entities.Alien('t7', 360, 400); rip2._dashTele = 0.3; rip2.draw(makeCtx());
+rip2._dashTele = 0; rip2._dashDur = 0.5; rip2.draw(makeCtx());
+var gd2 = new G.Entities.Alien('t8', 360, 400); gd2._aimArmed = true; gd2._aimAngle = Math.PI / 2; gd2.draw(makeCtx());
+assert(true, 't7 预警/突进 + t8 蓄能态渲染无异常');
+// t9/t10 三阶段渲染
+for (var stg = 1; stg <= 3; stg++) {
+  var c9 = new G.Entities.Alien('t9', 360, 500); c9.bossStage = stg; c9.draw(makeCtx());
+  var c10 = new G.Entities.Alien('t10', 360, 500); c10.bossStage = stg; c10.draw(makeCtx());
+}
+assert(true, 't9/t10 三阶段渲染路径无异常');
+// 敌弹渲染(带拖尾)
+var eb4 = new G.Entities.EnemyBullet(360, 500, 0, 100, '#ff5470');
+eb4.update(0.02); eb4.update(0.02); eb4.draw(makeCtx());
+assert(true, '敌弹(拖尾+尖刺)渲染路径无异常');
+// 音效 enemyFire 无 AudioContext 静默
+G.Sound.play('enemyFire');
+assert(true, 'enemyFire 音效无 AudioContext 安全运行');
 
 console.log('\n==============================');
 console.log('结果: ' + pass + ' 通过 / ' + fail + ' 失败');
