@@ -14,9 +14,7 @@
     _state: {},   // key -> 'loading' | 'ok' | 'fail'
     SPRITE_DIR: 'src/assets/sprites/',
     // 需要的贴图:ship + alien-t1..t6
-    LIST: ['ship',
-           'ship-lv1', 'ship-lv2', 'ship-lv3', 'ship-lv4', 'ship-lv5',
-           'bullet-lv1', 'bullet-lv2', 'bullet-lv3', 'bullet-lv4', 'bullet-lv5'],
+    LIST: ['ship'],
 
     init: function () {
       var self = this;
