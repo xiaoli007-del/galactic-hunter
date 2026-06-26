@@ -159,8 +159,11 @@
     // 运动目标:朝向屏幕下方区域(飞船方向),带横向漂移
     this.driftX = (Math.random() - 0.5) * 60;
     this.wob = Math.random() * Math.PI * 2;
-    // Boss 多阶段(v0.3):仅 t6 启用
-    this.isBoss = def.tier === 6;
+    // Boss 多阶段(v0.3):仅 isBoss 怪启用(t6/t9/t10)
+    this.isBoss = !!def.isBoss;
+    this.summon = !!def.summon;        // v0.8:t6 专属召唤(阶段≥2)
+    this.dash = !!def.dash;            // v0.8:t6 专属冲刺(阶段3)
+    this.pattern = def.pattern || null; // v0.8:t9/t10 弹幕模式(colossus/devourer)
     this.bossStage = 1;        // 1/2/3 阶段
     this.summonTimer = 0;      // 召唤倒计时
     this.dashTimer = 0;        // 冲刺倒计时
@@ -172,6 +175,18 @@
     this.spiralTimer = 0;      // 精灵冲刺倒计时
     this.spiralDash = 0;       // 精灵冲刺剩余
     this._spiralCx = x; this._spiralCy = y;           // 螺旋中心(随下移)
+    // v0.8 预警系统(t7 突进 / t8 开火 / Boss 瞄准扇形):>0 时显示预警,到点触发动作
+    this.telegraph = 0;        // 预警剩余秒
+    this.telegraphType = null; // 'lunge' / 'gunner' / 'aimed'
+    this.fireTimer = 0;        // t8 开火冷却
+    this.lungeTimer = 0;       // t7 突进冷却
+    this.lungeDash = 0;        // t7 突进剩余
+    this._lungeTx = x; this._lungeTy = y;   // t7 锁定的冲刺终点
+    // v0.8 Boss 弹幕计时(t9/t10)
+    this.radialTimer = 0;      // 环形弹幕冷却
+    this.aimedTimer = 0;      // 瞄准弹幕冷却
+    this.spiralFireTimer = 0; // 螺旋弹幕冷却(t10 持续)
+    this.spiralFireAngle = 0; // 螺旋发射角(随每次发射递增,形成双臂螺旋)
     // v0.5 技能状态:冰冻减速 / 灼烧(由 game.collisions 命中时施加)
     this.slowTimer = 0;        // 减速剩余秒(>0 时移速×slowMul)
     this.slowMul = 1;          // 当前减速倍率(1=正常)
@@ -212,16 +227,16 @@
         if (G.Game) G.Game._onBossStage(this, newStage);
       }
       speed *= B.speedMul[this.bossStage] || 1;
-      // 召唤小怪(阶段 ≥ 2)
-      if (this.bossStage >= 2) {
+      // 召唤小怪(阶段 ≥ 2;t6 专属 —— def.summon 标记,t9/t10 不召唤)
+      if (this.summon && this.bossStage >= 2) {
         this.summonTimer -= dt;
         if (this.summonTimer <= 0) {
           this.summonTimer = B.summonEvery[this.bossStage];
           if (G.Game) G.Game._bossSummon(this);
         }
       }
-      // 阶段 3 冲刺:朝飞船方向瞬时高速位移
-      if (this.bossStage >= 3) {
+      // 阶段 3 冲刺:朝飞船方向瞬时高速位移(t6 专属 —— def.dash 标记)
+      if (this.dash && this.bossStage >= 3) {
         this.dashTimer -= dt;
         if (this.dashing <= 0 && this.dashTimer <= 0) {
           this.dashing = B.dashDuration;
@@ -234,6 +249,8 @@
           }
         }
       }
+      // v0.8 弹幕(t9/t10):def.pattern 标记,每帧推进计时并按模式发射敌弹
+      if (this.pattern) this._fireBossPattern(dt);
       if (this.dashing > 0) {
         this.x += this._dashDx * speed * B.dashSpeedMul * dt;
         this.y += this._dashDy * speed * B.dashSpeedMul * dt;
@@ -280,6 +297,70 @@
       return;
     }
 
+    // T7 撕裂者(v0.8):预警突进 —— 巡航缓降 → 预警停身瞄准 → 朝飞船锁定 x 高速直冲到底
+    if (this.behavior === 'lunge') {
+      var LB = G.Config.BEHAVIOR;
+      // 冲刺中:朝锁定终点高速直冲(锁定的 x = 预警瞬间飞船所在 x,向下冲穿)
+      if (this.lungeDash > 0) {
+        var llx = this._lungeTx - this.x, lly = this._lungeTy - this.y;
+        var lll = Math.hypot(llx, lly) || 1;
+        var lsp = this.speed * LB.lungeDashMul * this.slowMul;
+        this.x += (llx / lll) * lsp * dt;
+        this.y += (lly / lll) * lsp * dt;
+        this.angle = Math.atan2(lly, llx) - Math.PI / 2;
+        this.lungeDash -= dt;
+        if (this.y > G.Config.HEIGHT + 80) this.escaped = true;
+        return;
+      }
+      // 预警中:停身(缓慢下移)+ 朝向飞船,到点开始冲刺
+      if (this.telegraph > 0) {
+        this.telegraph -= dt;
+        this.y += this.speed * 0.25 * this.slowMul * dt;
+        if (G.Game && G.Game.ship) this.angle = Math.atan2(G.Game.ship.y - this.y, G.Game.ship.x - this.x) - Math.PI / 2;
+        if (this.telegraph <= 0) this.lungeDash = LB.lungeDashDur;
+        return;
+      }
+      // 巡航:缓慢下移 + 横向摆动,计时到点进入预警
+      this.lungeTimer -= dt;
+      this.x += Math.sin(this.wob) * 60 * dt;
+      this.y += this.speed * 0.7 * this.slowMul * dt;
+      this.angle = Math.PI;   // 朝下
+      if (this.lungeTimer <= 0) {
+        this.lungeTimer = LB.lungeEvery;
+        this.telegraph = LB.lungeTelegraph;
+        this.telegraphType = 'lunge';
+        // 锁定飞船当前 x,向下冲到底(玩家横移即可躲 —— 经典「预判突进」)
+        if (G.Game && G.Game.ship) { this._lungeTx = G.Game.ship.x; this._lungeTy = G.Config.HEIGHT + 60; }
+      }
+      if (this.y > G.Config.HEIGHT + 80) this.escaped = true;
+      return;
+    }
+
+    // T8 守卫者(v0.8):预警射击 —— 巡航 → 预警停身蓄能 → 朝飞船发射瞄准扇形敌弹
+    if (this.behavior === 'gunner') {
+      var GB = G.Config.BEHAVIOR;
+      // 预警中:停身 + 炮口蓄能(渲染读 telegraphType='gunner')
+      if (this.telegraph > 0) {
+        this.telegraph -= dt;
+        this.y += this.speed * 0.2 * this.slowMul * dt;
+        if (G.Game && G.Game.ship) this.angle = Math.atan2(G.Game.ship.y - this.y, G.Game.ship.x - this.x) - Math.PI / 2;
+        if (this.telegraph <= 0) this._gunnerFire();
+        return;
+      }
+      // 巡航:下移 + 摆动,计时进入预警
+      this.fireTimer -= dt;
+      this.x += Math.sin(this.wob) * 40 * dt;
+      this.y += this.speed * 0.8 * this.slowMul * dt;
+      this.angle = Math.PI;
+      if (this.fireTimer <= 0) {
+        this.fireTimer = GB.gunnerEvery;
+        this.telegraph = GB.gunnerTelegraph;
+        this.telegraphType = 'gunner';
+      }
+      if (this.y > G.Config.HEIGHT + 80) this.escaped = true;
+      return;
+    }
+
     // 朝下移动 + 横向摆动(默认行为)
     var targetX = G.Config.WIDTH / 2 + this.driftX + Math.sin(this.wob) * 80;
     var dx = targetX - this.x, dy = (G.Config.HEIGHT + 60) - this.y;
@@ -308,6 +389,75 @@
         this.hitFlash = 0.12;
       }
       this.blinkCd = 0.6;
+    }
+  };
+
+  // v0.8 t8 守卫者开火:朝飞船发射扇形瞄准敌弹(gunnerSpread 发,间隔 gunnerSpreadAng)
+  Alien.prototype._gunnerFire = function () {
+    var GB = G.Config.BEHAVIOR, EB = G.Config.ENEMY_BULLETS;
+    if (!G.Game || !G.Game.ship) return;
+    var ang = Math.atan2(G.Game.ship.y - this.y, G.Game.ship.x - this.x);
+    var n = GB.gunnerSpread;
+    for (var i = 0; i < n; i++) {
+      var off = n === 1 ? 0 : (i - (n - 1) / 2) * GB.gunnerSpreadAng;
+      G.Game._fireEnemyBullet(this.x, this.y,
+        Math.cos(ang + off) * EB.speed, Math.sin(ang + off) * EB.speed, EB.colors.t8);
+    }
+  };
+
+  // v0.8 Boss 弹幕(t9 单阶段 / t10 三阶段):按 def.pattern 派发,每帧推进计时到点发射
+  Alien.prototype._fireBossPattern = function (dt) {
+    var B = G.Config.BOSS_PATTERNS[this.pattern];
+    if (!B || !G.Game) return;
+    var EB = G.Config.ENEMY_BULLETS;
+    var col = EB.colors['t' + this.def.tier];
+    if (this.pattern === 'colossus') {
+      // 环形:周期向四周发射 radialCount 发
+      this.radialTimer -= dt;
+      if (this.radialTimer <= 0) {
+        this.radialTimer = B.radialEvery;
+        G.Game._fireRing(this.x, this.y, B.radialCount, B.radialSpeed, col);
+      }
+      // 瞄准扇形:预警 → 到点朝飞船发 aimedSpread 发
+      this.aimedTimer -= dt;
+      if (this.aimedTimer <= 0 && this.telegraph <= 0) {
+        this.aimedTimer = B.aimedEvery;
+        this.telegraph = B.aimedTelegraph;
+        this.telegraphType = 'aimed';
+      }
+      if (this.telegraph > 0) {
+        this.telegraph -= dt;
+        if (this.telegraph <= 0) G.Game._fireAimedSpread(this.x, this.y, B.aimedSpread, 0.18, B.aimedSpeed, col);
+      }
+    } else if (this.pattern === 'devourer') {
+      var st = this.bossStage;
+      // 持续双臂螺旋:每 spiralEvery 发 spiralCount 发,发射角递增 → 旋转双臂
+      this.spiralFireTimer -= dt;
+      if (this.spiralFireTimer <= 0) {
+        this.spiralFireTimer = B.spiralEvery;
+        this.spiralFireAngle += 0.5;
+        for (var i = 0; i < B.spiralCount; i++) {
+          var sa = this.spiralFireAngle + i * Math.PI;
+          G.Game._fireEnemyBullet(this.x, this.y, Math.cos(sa) * B.spiralSpeed, Math.sin(sa) * B.spiralSpeed, col);
+        }
+      }
+      // 环形:随阶段加密(发数↑、间隔↓)
+      this.radialTimer -= dt;
+      if (this.radialTimer <= 0) {
+        this.radialTimer = B.radialEvery[st];
+        G.Game._fireRing(this.x, this.y, B.radialCount[st], B.radialSpeed, col);
+      }
+      // 瞄准扇形:随阶段加密
+      this.aimedTimer -= dt;
+      if (this.aimedTimer <= 0 && this.telegraph <= 0) {
+        this.aimedTimer = B.aimedEvery[st];
+        this.telegraph = B.aimedTelegraph;
+        this.telegraphType = 'aimed';
+      }
+      if (this.telegraph > 0) {
+        this.telegraph -= dt;
+        if (this.telegraph <= 0) G.Game._fireAimedSpread(this.x, this.y, B.aimedSpread[st], 0.18, B.aimedSpeed, col);
+      }
     }
   };
 
@@ -384,6 +534,25 @@
   };
   FloatingText.prototype.draw = function (ctx) { G.Render.floatingText(ctx, this); };
 
+  // —— 敌弹(v0.8:t8 守卫者 + t9/t10 Boss 发射;慢速可走位躲避)——
+  //   由 Game._fireEnemyBullet 等工厂方法生成,统一进 Game.enemyBullets 数组;碰撞飞船扣血(走护盾)。
+  function EnemyBullet(x, y, vx, vy, color) {
+    this.id = newId();
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.color = color || '#ff5d8f';
+    this.radius = G.Config.ENEMY_BULLETS.radius;
+    this.phase = Math.random() * Math.PI * 2;   // 自旋相位(渲染用)
+    this.dead = false;
+  }
+  EnemyBullet.prototype.update = function (dt) {
+    this.phase += dt * 10;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    var c = G.Config;
+    if (this.y < -24 || this.y > c.HEIGHT + 24 || this.x < -24 || this.x > c.WIDTH + 24) this.dead = true;
+  };
+  EnemyBullet.prototype.draw = function (ctx) { G.Render.enemyBullet(ctx, this); };
+
   Entities.Ship = Ship;
   Entities.Bullet = Bullet;
   Entities.Alien = Alien;
@@ -391,5 +560,6 @@
   Entities.Coin = Coin;
   Entities.PowerUp = PowerUp;
   Entities.FloatingText = FloatingText;
+  Entities.EnemyBullet = EnemyBullet;
   G.Entities = Entities;
 })(window.G = window.G || {});

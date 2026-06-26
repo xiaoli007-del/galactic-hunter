@@ -73,7 +73,13 @@
       t3: { name: '蟹甲',   tier: 3, hp: 8,   score: 80,   coin: 15,  radius: 34, speed: 48,  spawnWeight: 18, color: '#ffd166', behavior: null },
       t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff', behavior: 'blink' },   // 受击概率闪现回避
       t5: { name: '精英',   tier: 5, hp: 20,  score: 300,  coin: 60,  radius: 40, speed: 60,  spawnWeight: 5,  color: '#ff8a3d', behavior: 'spiral' },    // 螺旋移动 + 周期冲刺
-      t6: { name: 'Boss',   tier: 6, hp: 100, score: 1500, coin: 300, radius: 70, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null },
+      t6: { name: '巨构Boss',tier: 6, hp: 100, score: 1500, coin: 300, radius: 70, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null, isBoss: true, summon: true, dash: true },
+      // —— v0.8 新增:精英 + Boss(带敌弹 / 特殊技能)。t1–t6 行为完全不变 ——
+      // t7/t8 入普通刷新池(高难度档才显著出现,低 spawnWeight);t9/t10 仅由 Boss 轮换触发(bossOnly,不进普通池)。
+      t7: { name: '撕裂者', tier: 7, hp: 12,  score: 200,  coin: 40,  radius: 30, speed: 90,  spawnWeight: 4,  color: '#ff3344', behavior: 'lunge' },     // 预警突进:停身瞄准→朝飞船锁定 x 高速直冲到底(可横移躲)
+      t8: { name: '守卫者', tier: 8, hp: 18,  score: 260,  coin: 55,  radius: 32, speed: 52,  spawnWeight: 3,  color: '#ffaa00', behavior: 'gunner' },    // 周期停身→预警→朝飞船发射 3 发瞄准敌弹
+      t9: { name: '钢铁巨像',tier: 9, hp: 220, score: 3000, coin: 500, radius: 80, speed: 30, spawnWeight: 0,  color: '#ff5c2a', behavior: null, isBoss: true, bossOnly: true, pattern: 'colossus' },   // 中 Boss:周期环形弹幕 + 瞄准扇形
+      t10:{ name: '虚空吞噬者',tier:10,hp: 500, score: 8000, coin:1500, radius: 95, speed: 26, spawnWeight: 0,  color: '#b14dff', behavior: null, isBoss: true, bossOnly: true, pattern: 'devourer' }, // 终 Boss:三阶段(螺旋+环形+瞄准)递进
     },
     // 特殊行为数值(v0.3)
     BEHAVIOR: {
@@ -83,6 +89,16 @@
       spiralDashEvery: 2.5,   // 精英冲刺间隔
       spiralDashDur: 0.5,     // 精灵冲刺持续
       spiralDashMul: 2.6,     // 精灵冲刺速度倍率
+      // v0.8 t7 撕裂者(预警突进)
+      lungeTelegraph: 0.6,    // 预警持续(秒):停身 + 瞄准线,给玩家横移躲避窗口
+      lungeEvery: 2.8,        // 突进冷却
+      lungeDashDur: 0.45,     // 突进持续
+      lungeDashMul: 4.6,      // 突进速度倍率(相对基础 speed)
+      // v0.8 t8 守卫者(预警射击)
+      gunnerTelegraph: 0.5,   // 开火前预警(停身 + 炮口蓄能光)
+      gunnerEvery: 2.4,       // 开火冷却
+      gunnerSpread: 3,        // 一次发射的瞄准弹数(扇形)
+      gunnerSpreadAng: 0.22,  // 扇形相邻弹角度间隔(弧度)
     },
 
     // 波次:随时间提升高等级怪权重。难度档每 30s 一档。
@@ -94,6 +110,7 @@
       spawnIntervalDecay: 0.92,  // 每档刷新间隔衰减
       bossEveryKills: 60,        // 每 N 击杀触发 Boss
       maxAliensOnScreen: 26,
+      bossRotation: ['t6', 't9', 't10'],   // v0.8:Boss 轮换(每 60 击杀循环)
     },
 
     // 技能胶囊(v0.5):场上定时掉落,飞船子弹击中即拾取;持久生效直到拾取下一个。
@@ -146,6 +163,31 @@
       dashEvery: 2.8,                            // 阶段 3 冲刺间隔(秒)
       dashSpeedMul: 4.5,                         // 冲刺速度倍率
       dashDuration: 0.6,                         // 冲刺持续(秒)
+    },
+
+    // v0.8 敌弹(t8 守卫者 + t9/t10 Boss 发射):慢于玩家弹、可走位躲避
+    ENEMY_BULLETS: {
+      speed: 230,            // 基础速度(px/s);Boss 弹幕按 pattern 覆盖
+      radius: 7,
+      maxOnScreen: 80,       // 同屏上限(防弹幕爆炸瞬间实体过多拖帧)
+      colors: { t8: '#ffaa00', t9: '#ff5c2a', t10: '#b14dff' },
+    },
+    // v0.8 Boss 弹幕模式(t9 单阶段;t10 按 bossStage 递进;复用 BOSS 阶段阈值)
+    BOSS_PATTERNS: {
+      colossus: {            // t9 钢铁巨像:周期环形弹幕 + 瞄准扇形
+        radialEvery: 2.2, radialCount: 14, radialSpeed: 200,
+        aimedEvery: 1.6, aimedSpread: 3, aimedSpeed: 250, aimedTelegraph: 0.5,
+      },
+      devourer: {            // t10 虚空吞噬者:三阶段(螺旋持续 + 环形/瞄准随阶段加密)
+        spiralEvery: 0.16, spiralCount: 2, spiralSpeed: 210,   // 持续双臂螺旋(每 0.16s 发 2 发,发射角递增)
+        radialEvery:   { 1: 3.0, 2: 2.2, 3: 1.5 },
+        radialCount:    { 1: 12, 2: 16, 3: 22 },
+        radialSpeed: 210,
+        aimedEvery:    { 1: 2.6, 2: 1.9, 3: 1.3 },
+        aimedSpread:    { 1: 3, 2: 4, 3: 6 },
+        aimedSpeed: 260,
+        aimedTelegraph: 0.4,
+      },
     },
 
     // 起始与持久化

@@ -31,6 +31,7 @@
 
     ship: null,
     bullets: [], aliens: [], particles: [], coinsArr: [], texts: [], powerups: [],
+    enemyBullets: [],         // v0.8:敌弹(t8/t9/t10 发射,可走位躲避)
 
     activeSkill: null,        // v0.5:当前生效技能(SKILLS 键);持久直到拾取下一个
     powerupTimer: 0,          // 胶囊掉落倒计时
@@ -38,6 +39,7 @@
     spawnTimer: 0,
     killCount: 0,
     fireTimer: 0,
+    _bossCount: 0,            // v0.8:Boss 轮换计数(每 60 击杀按 bossRotation 循环 t6/t9/t10)
     screenFlash: 0,
     _clickConsumed: false,
 
@@ -114,8 +116,10 @@
       this.coinsArr.length = 0;
       this.texts.length = 0;
       this.powerups.length = 0;
+      this.enemyBullets.length = 0;        // v0.8:清空敌弹
       this.activeSkill = null;             // v0.5:每局重置技能(开局用武器默认弹道)
       this.powerupTimer = G.Config.POWERUP.dropEvery;   // 首个胶囊倒计时
+      this._bossCount = 0;                 // v0.8:Boss 轮换计数每局重置
       this.ship._aliens = this.aliens;      // v0.5:同步目标列表给飞船自动锁敌(避免实体反向依赖 Game)
       this.ship.hp = this.ship.maxHp;
       this.ship.hitFlash = 0;
@@ -214,11 +218,15 @@
         this.spawnAlien(tier);
         this.spawnTimer = interval;
       }
-      // Boss 触发
+      // Boss 触发(v0.8:按 bossRotation 循环 t6/t9/t10,每 60 击杀一个)
       if (this.killCount > 0 && this.killCount % C.WAVE.bossEveryKills === 0 && !this._bossSpawned) {
-        this.spawnAlien(tier, 't6');
+        var rot = C.WAVE.bossRotation;
+        var bossType = rot[this._bossCount % rot.length];
+        this.spawnAlien(tier, bossType);
+        this._bossCount++;
         this._bossSpawned = true;
-        this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ BOSS 出现', '#ff3d6e', 36));
+        var bossDef = C.ALIENS[bossType];
+        this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ ' + bossDef.name + ' 降临', bossDef.color, 36));
         Snd && Snd.play('boss');
       }
       if (this.killCount % C.WAVE.bossEveryKills !== 0) this._bossSpawned = false;
@@ -240,7 +248,8 @@
     },
 
     spawnAlien: function (tier, forceType) {
-      var keys = Object.keys(C.ALIENS);
+      // v0.8:bossOnly 怪(t9/t10)不进普通刷新池,仅由 Boss 轮换触发;t6 保留在池中(行为不变)
+      var keys = Object.keys(C.ALIENS).filter(function (k) { return !C.ALIENS[k].bossOnly; });
       var weights = keys.map(function (k) {
         var d = C.ALIENS[k];
         var mul = 1;
@@ -259,6 +268,7 @@
     updateEntities: function (dt) {
       for (var i = 0; i < this.bullets.length; i++) this.bullets[i].update(dt);
       for (var j = 0; j < this.aliens.length; j++) this.aliens[j].update(dt);
+      for (var eb = 0; eb < this.enemyBullets.length; eb++) this.enemyBullets[eb].update(dt);   // v0.8 敌弹
       for (var k = 0; k < this.particles.length; k++) this.particles[k].update(dt);
       for (var m = 0; m < this.texts.length; m++) this.texts[m].update(dt);
       for (var n = 0; n < this.coinsArr.length; n++) this.coinsArr[n].update(dt, this.ship);
@@ -316,6 +326,19 @@
             this.explode(al.x, al.y, al.def.color, 18);
             this.screenFlash = 0.35;
             al.dead = true;
+          }
+        }
+      }
+      // v0.8 敌弹 ↔ 飞船:命中即消(走护盾/hp,与怪物撞击同链路)
+      for (var eb = 0; eb < this.enemyBullets.length; eb++) {
+        var ebul = this.enemyBullets[eb];
+        if (ebul.dead) continue;
+        if (E.circleHit(ebul, this.ship)) {
+          if (this.ship.takeHit()) {
+            Snd && Snd.play('hit');
+            this.explode(ebul.x, ebul.y, ebul.color, 10);
+            this.screenFlash = 0.25;
+            ebul.dead = true;
           }
         }
       }
@@ -431,11 +454,35 @@
       }
     },
 
+    // ================= v0.8 敌弹工厂(t8 守卫者 / t9/t10 Boss 调用)=================
+    // 单发:受同屏上限约束,超限丢弃(防弹幕爆炸瞬间实体过多)
+    _fireEnemyBullet: function (x, y, vx, vy, color) {
+      if (this.enemyBullets.length >= C.ENEMY_BULLETS.maxOnScreen) return;
+      this.enemyBullets.push(new Ent.EnemyBullet(x, y, vx, vy, color));
+    },
+    // 环形:向四周均匀发射 count 发
+    _fireRing: function (x, y, count, speed, color) {
+      for (var i = 0; i < count; i++) {
+        var a = (i / count) * Math.PI * 2;
+        this._fireEnemyBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed, color);
+      }
+    },
+    // 瞄准扇形:朝飞船发 count 发,相邻间隔 spreadAng
+    _fireAimedSpread: function (x, y, count, spreadAng, speed, color) {
+      if (!this.ship) return;
+      var base = Math.atan2(this.ship.y - y, this.ship.x - x);
+      for (var i = 0; i < count; i++) {
+        var off = count === 1 ? 0 : (i - (count - 1) / 2) * spreadAng;
+        this._fireEnemyBullet(x, y, Math.cos(base + off) * speed, Math.sin(base + off) * speed, color);
+      }
+    },
+
     // —— 回收 + 金币拾取 ——
     cleanup: function () {
       var gained = 0;
       this.bullets = this.bullets.filter(function (b) { return !b.dead; });
       this.aliens = this.aliens.filter(function (a) { return !a.dead && !a.escaped; });
+      this.enemyBullets = this.enemyBullets.filter(function (e) { return !e.dead; });   // v0.8
       this.powerups = this.powerups.filter(function (p) { return !p.dead; });
       this.particles = this.particles.filter(function (p) { return !p.dead; });
       if (this.particles.length > 240) this.particles.splice(0, this.particles.length - 240);
@@ -558,6 +605,7 @@
       ctx.restore();
 
       for (var i = 0; i < this.aliens.length; i++) this.aliens[i].draw(ctx);
+      for (var eb = 0; eb < this.enemyBullets.length; eb++) this.enemyBullets[eb].draw(ctx);   // v0.8 敌弹(怪之上、玩家弹之下)
       for (var pu = 0; pu < this.powerups.length; pu++) this.powerups[pu].draw(ctx);
       for (var j = 0; j < this.bullets.length; j++) this.bullets[j].draw(ctx);
       for (var k = 0; k < this.particles.length; k++) this.particles[k].draw(ctx);
@@ -735,7 +783,7 @@
       if (this._button(ctx, lbx, lby, lbw, lbh, '🏆  战 绩 排 行 榜', true, true)) this.openLeaderboard();
 
       ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '13px Arial';
-      ctx.fillText('v0.4 · AI 协作设计', W / 2, H - 30);
+      ctx.fillText('v0.8 · AI 协作设计', W / 2, H - 30);
       ctx.restore();
     },
 
