@@ -9,7 +9,7 @@
   'use strict';
   var E = G.Engine, P = G.Platform, C = G.Config, R = G.Render, Ent = G.Entities, Snd = null;
 
-  var STATE = { MENU: 'menu', PLAYING: 'playing', GAMEOVER: 'gameover', LEADERBOARD: 'leaderboard' };
+  var STATE = { MENU: 'menu', PLAYING: 'playing', PAUSED: 'paused', GAMEOVER: 'gameover', LEADERBOARD: 'leaderboard' };
 
   // —— 布局(逻辑坐标 720×1280)——
   var TOP_H = 104, BOT_H = 156;
@@ -138,6 +138,45 @@
       this.save();
     },
 
+    // —— 暂停(P/ESC 或暂停按钮)——冻结逻辑但仍渲染世界 + 暂停遮罩 ——
+    _pause: function () {
+      this.state = STATE.PAUSED;
+      P.pointer.down = false; P.pointer.justPressed = false;   // 防暂停瞬间的按下被当开火
+    },
+    _resume: function () {
+      this.state = STATE.PLAYING;
+      P.pointer.down = false; P.pointer.justPressed = false;   // 防继续按钮按下被当开火
+    },
+    // 放弃本局回主菜单(暂停/结算页用)。清场上残留,避免下次开局前短暂残留。
+    returnToMenu: function () {
+      this.state = STATE.MENU;
+      this.bullets.length = 0; this.aliens.length = 0;
+      this.enemyBullets.length = 0; this.particles.length = 0;
+      this.coinsArr.length = 0; this.texts.length = 0; this.powerups.length = 0;
+      P.pointer.down = false; P.pointer.justPressed = false;
+    },
+
+    drawPaused: function (ctx) {
+      var W = C.WIDTH, H = C.HEIGHT;
+      ctx.save();
+      ctx.fillStyle = 'rgba(5,7,14,0.72)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#5ad1ff';
+      ctx.shadowColor = '#5ad1ff'; ctx.shadowBlur = 20;
+      ctx.font = 'bold 48px Arial';
+      ctx.fillText('已 暂 停', W / 2, H / 2 - 110);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '16px Arial';
+      ctx.fillText('按 P 或 ESC 继续', W / 2, H / 2 - 70);
+
+      var bw = 280, bh = 70, bx = W / 2 - bw / 2, by = H / 2 - 30;
+      if (this._button(ctx, bx, by, bw, bh, '▶  继 续 游 戏', true, false)) this._resume();
+      var bw2 = 280, bh2 = 48, bx2 = W / 2 - bw2 / 2, by2 = by + bh + 18;
+      if (this._button(ctx, bx2, by2, bw2, bh2, '◀  返 回 主 菜 单', true, true)) this.returnToMenu();
+      ctx.restore();
+    },
+
     // ================= 主循环 =================
     update: function (dt) {
       this.time += dt;
@@ -146,6 +185,13 @@
       this._fpsFr = (this._fpsFr || 0) + 1;
       this._fpsTm = (this._fpsTm || 0) + dt;
       if (this._fpsTm >= 0.5) { this.fps = Math.round(this._fpsFr / this._fpsTm); this._fpsFr = 0; this._fpsTm = 0; }
+
+      // 暂停切换(P/ESC,或暂停按钮)。在任意状态都检测,仅 PLAYING↔PAUSED 间切。
+      // 切换时清指针状态,避免"继续"按钮的按下被当成开火。
+      if (P.isKeyJustPressed('p') || P.isKeyJustPressed('escape')) {
+        if (this.state === STATE.PLAYING) { this._pause(); return; }
+        if (this.state === STATE.PAUSED) { this._resume(); return; }
+      }
       if (this.state !== STATE.PLAYING) return;
 
       this.battleTime += dt;
@@ -204,6 +250,8 @@
         var b = new Ent.Bullet(
           this.ship.x + ox, this.ship.y + oy,
           Math.cos(ang) * w.speed, Math.sin(ang) * w.speed, w, dmg, sk);
+        b.weaponLevel = this.weaponLevel;  // 传递武器等级给弹道渲染
+        b.spreadCount = i;  // 弹道序号,用于贴图行选择
         this.bullets.push(b);
       }
     },
@@ -489,9 +537,11 @@
     _spawnEBullet: function (alien, ang, sp, col) {
       if (this.enemyBullets.length >= C.ENEMY_BULLET.maxOnScreen) return;
       var er = alien.radius + 4;
-      this.enemyBullets.push(new Ent.EnemyBullet(
+      var eb = new Ent.EnemyBullet(
         alien.x + Math.cos(ang) * er, alien.y + Math.sin(ang) * er,
-        Math.cos(ang) * sp, Math.sin(ang) * sp, col));
+        Math.cos(ang) * sp, Math.sin(ang) * sp, col);
+      eb.alienType = alien.type;  // 传递怪物类型给敌弹渲染
+      this.enemyBullets.push(eb);
     },
 
     explode: function (x, y, color, n) {
@@ -608,10 +658,11 @@
 
       R.background(ctx, this.time);
 
-      if (this.state === STATE.PLAYING || this.state === STATE.GAMEOVER) {
+      if (this.state === STATE.PLAYING || this.state === STATE.GAMEOVER || this.state === STATE.PAUSED) {
         this.drawWorld(ctx);
       }
       if (this.state === STATE.PLAYING) this.drawHUD(ctx);
+      if (this.state === STATE.PAUSED) this.drawPaused(ctx);
       if (this.state === STATE.MENU) this.drawMenu(ctx);
       if (this.state === STATE.GAMEOVER) this.drawGameOver(ctx);
       if (this.state === STATE.LEADERBOARD) this.drawLeaderboard(ctx);
@@ -678,9 +729,11 @@
       ctx.textBaseline = 'alphabetic';
       ctx.restore();
 
-      // 音效开关(右上角小图标)
+      // 音效开关(右上角小图标)+ 暂停按钮(其左)
       var sndOn = P.audio.isEnabled();
-      var sbX = W - 44, sbY = 8, sbS = 32;
+      var sbS = 32;
+      var pbX = W - 88, sbX = W - 44, sbY = 8;   // 暂停按钮在音效按钮左侧
+      if (this._button(ctx, pbX, sbY, sbS, sbS, '⏸', true, true)) this._pause();
       if (this._button(ctx, sbX, sbY, sbS, sbS, sndOn ? '♪' : '✕', true, true)) {
         P.audio.setEnabled(!sndOn);
       }
@@ -692,15 +745,28 @@
         ctx.restore();
       }
 
-      // 血量(中部小飞船图标)
+      // 血量(中部醒目血条 + "生命 N/M" 数字,低血红色脉动闪烁)
+      //   旧版是 14px 小三角飞船图标,颜色与 HUD 接近、无数字,玩家难判断剩多少血。
+      //   改成分段血条(满段亮绿、空段暗)+ 数字标注 + 低血(hp≤1 且非满血上限)红色闪烁警告。
       ctx.save();
-      var hx = W / 2 - (this.ship.maxHp * 18) / 2;
-      for (var i = 0; i < this.ship.maxHp; i++) {
-        ctx.fillStyle = i < this.ship.hp ? '#5ad1ff' : 'rgba(90,209,255,0.2)';
-        ctx.beginPath();
-        ctx.moveTo(hx + i * 18, 30); ctx.lineTo(hx + i * 18 + 14, 30);
-        ctx.lineTo(hx + i * 18 + 7, 48); ctx.closePath(); ctx.fill();
+      var hpMax = this.ship.maxHp, hp = this.ship.hp;
+      var lowHp = hp <= 1 && hpMax > 1;
+      var flash = lowHp && Math.floor(this.time * 8) % 2 === 0;
+      var barW = 110, barH = 11, segGap = 3;
+      var segW = (barW - segGap * (hpMax - 1)) / hpMax;
+      var bx = W / 2 - barW / 2, by = 30;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      this._roundRect(ctx, bx - 2, by - 2, barW + 4, barH + 4, 4); ctx.fill();  // 背框
+      for (var i = 0; i < hpMax; i++) {
+        var full = i < hp;
+        ctx.fillStyle = full
+          ? (lowHp ? (flash ? '#ff4d6d' : '#7a2030') : '#5aff8a')   // 满段:正常绿 / 低血红闪烁
+          : 'rgba(120,140,160,0.22)';                                // 空段:暗灰
+        this._roundRect(ctx, bx + i * (segW + segGap), by, segW, barH, 2); ctx.fill();
       }
+      ctx.fillStyle = lowHp ? '#ff4d6d' : '#cfe4ff';
+      ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+      ctx.fillText('生命 ' + hp + ' / ' + hpMax, W / 2, by + barH + 16);
       ctx.restore();
 
       // 护盾充能(防御线):HP 下方一行小菱形,有格才画
@@ -842,6 +908,8 @@
       if (this._button(ctx, bx, by, bw, bh, '↻  再 战 一 局', true, false)) this.startGame();
       var lbw2 = 280, lbh2 = 48, lbx2 = W / 2 - lbw2 / 2, lby2 = by + bh + 18;
       if (this._button(ctx, lbx2, lby2, lbw2, lbh2, '🏆  查 看 排 行 榜', true, true)) this.openLeaderboard();
+      var mbw = 280, mbh = 48, mbx = W / 2 - mbw / 2, mby = lby2 + lbh2 + 14;
+      if (this._button(ctx, mbx, mby, mbw, mbh, '🏠  返 回 主 菜 单', true, true)) this.returnToMenu();
       ctx.restore();
     },
 

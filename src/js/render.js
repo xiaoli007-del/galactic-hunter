@@ -9,7 +9,7 @@
 (function (G) {
   'use strict';
 
-  var stars = null, bgCanvas = null;
+  var stars = null, bgCanvas = null, bgImage = null;
   var glowCache = {};
 
   // —— 颜色工具 ——
@@ -114,34 +114,84 @@
   var Render = {
 
     background: function (ctx, t) {
-      ensureStars();
-      if (!bgCanvas) buildBackground();
       var cfg = G.Config, W = cfg.WIDTH, H = cfg.HEIGHT;
-      ctx.drawImage(bgCanvas, 0, 0);            // 预渲染底图,一次贴图
 
-      // 星点闪烁(无 shadow,纯 arc,便宜)
-      for (var s = 0; s < stars.length; s++) {
-        var st = stars[s];
-        var a = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * st.tws + st.tw));
-        ctx.globalAlpha = a * st.layer;
-        ctx.fillStyle = '#cfe4ff';
-        ctx.beginPath();
-        ctx.arc(st.x, st.y, st.r * st.layer, 0, Math.PI * 2);
-        ctx.fill();
+      // 尝试加载玩家提供的背景图
+      var bgTex = G.Assets && G.Assets.get('background');
+      if (bgTex) {
+        // 使用玩家背景图:拉伸铺满整个画布
+        ctx.drawImage(bgTex, 0, 0, W, H);
+        // 叠加一层微弱的星空闪烁效果(保留动态感)
+        ensureStars();
+        for (var s = 0; s < stars.length; s++) {
+          var st = stars[s];
+          var a = 0.2 + 0.3 * (0.5 + 0.5 * Math.sin(t * st.tws + st.tw));
+          ctx.globalAlpha = a * st.layer;
+          ctx.fillStyle = '#cfe4ff';
+          ctx.beginPath();
+          ctx.arc(st.x, st.y, st.r * st.layer * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      } else {
+        // 退回程序化背景
+        ensureStars();
+        if (!bgCanvas) buildBackground();
+        ctx.drawImage(bgCanvas, 0, 0);
+        for (var s2 = 0; s2 < stars.length; s2++) {
+          var st2 = stars[s2];
+          var a2 = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * st2.tws + st2.tw));
+          ctx.globalAlpha = a2 * st2.layer;
+          ctx.fillStyle = '#cfe4ff';
+          ctx.beginPath();
+          ctx.arc(st2.x, st2.y, st2.r * st2.layer, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
     },
 
-    // —— 飞船(模块化 + 阶段进化;v0.7 精致机械装甲风重做)——
-    //   按 ship.level 组装模块:引擎 → 机翼 → 船体 → 武器挂载 → 能量核心。
-    //   精致化:多层装甲板/中脊高光/横向接缝/铆钉点阵/能量纹路/散热栅格,
-    //   明暗渐变塑造金属体积感;等级越高体积↑/武器↑/核心发光↑/结构复杂化/尾焰↑。
+    // —— 飞船(贴图渲染,按等级切换设定图)——
+    //   优先使用玩家提供的设定图贴图(ship-lv1..ship-lv5),贴图缺失时退回程序化绘制。
+    //   贴图自带引擎尾焰/装甲/发光核心,不再需要分模块绘制。
     ship: function (ctx, ship) {
       var lvl = ship.level || 1;
-      var visScale = 1 + (lvl - 1) * 0.06;      // 体型随等级放大(Lv5≈1.24×;仅视觉,碰撞半径不变)
-      var glowColor = ship.glow || '#5ad1ff';    // 等级光晕色(见 Config.SHIPS[].glow)
+      var glowColor = ship.glow || '#5ad1ff';
       var r = ship.radius, flash = ship.hitFlash > 0;
-      var t = Math.max(1, Math.min(5, lvl));     // 进化阶段 1..5
+
+      // 尝试加载贴图
+      var tex = G.Assets && G.Assets.get('ship-lv' + lvl);
+      if (tex) {
+        // 贴图渲染:居中绘制,尺寸与碰撞半径匹配
+        ctx.save();
+        ctx.translate(ship.x, ship.y);
+        ctx.rotate(ship.aimAngle + Math.PI / 2);
+        // 贴图比例:根据等级调整大小(Lv1 较小,Lv5 较大)
+        var texScale = [1.0, 1.1, 1.2, 1.35, 1.5][lvl - 1] || 1.0;
+        var texSize = r * 2.2 * texScale;
+        ctx.drawImage(tex, -texSize / 2, -texSize / 2, texSize, texSize);
+        // 受击闪烁:叠加白色半透明
+        if (flash) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.5;
+          ctx.drawImage(tex, -texSize / 2, -texSize / 2, texSize, texSize);
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.restore();
+      } else {
+        // 退回程序化绘制(贴图未加载时)
+        this._shipFallback(ctx, ship);
+      }
+    },
+
+    // 飞船程序化回退(贴图缺失时使用,保留原版渲染)
+    _shipFallback: function (ctx, ship) {
+      var lvl = ship.level || 1;
+      var visScale = 1 + (lvl - 1) * 0.06;
+      var glowColor = ship.glow || '#5ad1ff';
+      var r = ship.radius, flash = ship.hitFlash > 0;
+      var t = Math.max(1, Math.min(5, lvl));
       ctx.save();
       ctx.translate(ship.x, ship.y);
       ctx.rotate(ship.aimAngle + Math.PI / 2);
@@ -320,27 +370,57 @@
       ctx.globalCompositeOperation = 'source-over';
     },
 
-    // —— 外星怪(机械/生物机械生态;v0.7 精致机械装甲风重做)——
-    //   不用静态贴图;每种 tier 独立轮廓 + 发光弱点核心,一眼可辨类型。
-    //   精致化:装甲分割线/铆钉/炮口环/关节球/能量纹/推进口,复杂度随 tier 递增。
+    // —— 外星怪(贴图渲染,按怪物类型切换设定图)——
+    //   优先使用玩家提供的怪物设定图贴图(alien-t1..alien-t7),贴图缺失时退回程序化绘制。
     alien: function (ctx, a) {
+      var def = a.def, r = def.radius, flash = a.hitFlash > 0;
+
+      // 尝试加载怪物贴图
+      var tex = G.Assets && G.Assets.get('alien-' + a.type);
+      if (tex) {
+        // 贴图渲染:居中绘制,尺寸与碰撞半径匹配
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        ctx.rotate(a.angle);
+        // 贴图比例:根据tier调整大小
+        var texScale = 1.0 + (def.tier - 1) * 0.08;
+        var texSize = r * 2.2 * texScale;
+        ctx.drawImage(tex, -texSize / 2, -texSize / 2, texSize, texSize);
+        // 受击闪烁:叠加白色半透明
+        if (flash) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.5;
+          ctx.drawImage(tex, -texSize / 2, -texSize / 2, texSize, texSize);
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.restore();
+      } else {
+        // 退回程序化绘制
+        this._alienFallback(ctx, a);
+      }
+
+      this._alienStatus(ctx, a, r);
+      if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
+    },
+
+    // 怪物程序化回退(贴图缺失时使用)
+    _alienFallback: function (ctx, a) {
       var def = a.def, r = def.radius, flash = a.hitFlash > 0;
       ctx.save();
       ctx.translate(a.x, a.y); ctx.rotate(a.angle);
       var wob = Math.sin(a.phase) * 0.5 + 0.5;
 
-      // 外光晕(发光精灵)—— 略增强,提升远观辨识度
       ctx.globalCompositeOperation = 'lighter';
       drawGlow(ctx, def.color, 0, 0, r * 2.6, 0.55);
       ctx.globalCompositeOperation = 'source-over';
 
-      // 本体径向渐变(v0.8 精修):左上装甲高光 + 中段本色 + 右下暗部,塑造硬表面体积感。
       var fill = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.08, 0, 0, r * 1.05);
       if (flash) { fill.addColorStop(0, '#fff'); fill.addColorStop(1, '#fff'); }
       else { fill.addColorStop(0, lighten(def.color, 0.45)); fill.addColorStop(0.5, def.color); fill.addColorStop(1, darken(def.color, 0.6)); }
       ctx.fillStyle = fill;
       ctx.strokeStyle = flash ? '#fff' : lighten(def.color, 0.55);
-      ctx.lineWidth = 2.4;       // 加粗描边,远看轮廓更清晰
+      ctx.lineWidth = 2.4;
 
       switch (def.tier) {
         case 1: this._alienCrawler(ctx, r, wob); break;
@@ -349,13 +429,11 @@
         case 4: this._alienWraith(ctx, r, wob); break;
         case 5: this._alienElite(ctx, r, wob); break;
         case 6: this._alienBoss(ctx, r, wob); break;
-        // v0.8 新内容(按 type 路由,t7/t8 共 tier7)
         case 7: this[a.type === 't8' ? '_alienGuardian' : '_alienRipper'](ctx, a, r, wob); break;
         case 8: this._alienColossus(ctx, a, r, wob); break;
         case 9: this._alienVoid(ctx, a, r, wob); break;
       }
 
-      // 发光弱点核心(非 Boss;Boss 自带多核心节点)。越强越亮,随 tier 增大;v0.8 加脉动更夺目。
       if (!a.isBoss) {
         var wpulse = 0.88 + 0.12 * Math.sin(Date.now() / 130);
         ctx.globalCompositeOperation = 'lighter';
@@ -367,8 +445,6 @@
         ctx.beginPath(); ctx.arc(0, 0, r * (0.16 + def.tier * 0.022) * wpulse, 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();
-      this._alienStatus(ctx, a, r);
-      if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
     },
 
     // v0.5 技能状态叠加:冰冻=冷蓝光晕 + 减速圈;灼烧=橙色脉动(覆盖 sprite/几何两条路径)
@@ -730,10 +806,13 @@
       }
     },
 
-    // —— 敌弹(v0.8):发光球 + 短拖尾;用怪色,比玩家弹略小更暖,外形带尖刺 ——
+    // —— 敌弹(贴图渲染,按怪物类型切换弹道设定图)——
+    //   优先使用玩家提供的敌弹贴图(enemy-bullet-t1..t7),贴图缺失时退回程序化绘制。
     enemyBullet: function (ctx, b) {
       ctx.save();
-      if (b.trail.length > 1) {                          // 拖尾
+
+      // 拖尾效果(保留)
+      if (b.trail.length > 1) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.4; ctx.lineCap = 'round';
         ctx.globalAlpha = 0.35;
@@ -742,20 +821,30 @@
         ctx.lineTo(b.x, b.y); ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      ctx.globalCompositeOperation = 'lighter';
-      drawGlow(ctx, b.color, b.x, b.y, b.radius * 3.2);   // 外光晕
-      ctx.globalCompositeOperation = 'source-over';
-      // 核心(白) + 尖刺外形(四向,与玩家圆弹区分)
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = b.color;
-      ctx.beginPath();
-      for (var s = 0; s < 4; s++) {
-        var a = s / 4 * Math.PI * 2;
-        ctx.moveTo(b.x, b.y);
-        ctx.lineTo(b.x + Math.cos(a) * b.radius * 1.5, b.y + Math.sin(a) * b.radius * 1.5);
+
+      // 尝试加载敌弹贴图
+      var tex = G.Assets && G.Assets.get('enemy-bullet-' + (b.alienType || 't1'));
+      if (tex) {
+        // 贴图渲染:居中绘制
+        var texSize = b.radius * 4;
+        ctx.drawImage(tex, b.x - texSize / 2, b.y - texSize / 2, texSize, texSize);
+      } else {
+        // 退回程序化绘制
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, b.color, b.x, b.y, b.radius * 3.2);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        for (var s = 0; s < 4; s++) {
+          var a = s / 4 * Math.PI * 2;
+          ctx.moveTo(b.x, b.y);
+          ctx.lineTo(b.x + Math.cos(a) * b.radius * 1.5, b.y + Math.sin(a) * b.radius * 1.5);
+        }
+        ctx.lineWidth = b.radius * 0.5; ctx.strokeStyle = b.color; ctx.stroke();
       }
-      ctx.lineWidth = b.radius * 0.5; ctx.strokeStyle = b.color; ctx.stroke();
+
       ctx.restore();
     },
 
@@ -785,19 +874,27 @@
       ctx.restore();
     },
 
-    // —— 子弹:发光精灵 + 拖尾(v0.5 按技能变体:激光粗光束 / 火焰橙拖尾 / 闪电锯齿 / 冰冻冷光)——
+    // —— 子弹:贴图渲染(按武器等级切换弹道设定图)——
+    //   优先使用玩家提供的弹道贴图(bullet-lv1..bullet-lv5),贴图缺失时退回程序化绘制。
+    //   技能特效(冰冻/火焰/闪电/激光)仍以程序化叠加在贴图之上。
     bullet: function (ctx, b) {
       var fx = b.skill && b.skill.fx;
+      // 尝试加载弹道贴图(按武器等级)
+      var weaponLv = b.weaponLevel || 1;
+      var tex = G.Assets && G.Assets.get('bullet-lv' + weaponLv);
+
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
+
+      // 拖尾效果(保留)
       if (b.trail.length > 1) {
         ctx.strokeStyle = b.color;
-        ctx.lineWidth = b.radius * (fx === 'laser' ? 3.0 : 1.4);   // 激光弹道更粗
+        ctx.lineWidth = b.radius * (fx === 'laser' ? 3.0 : 1.4);
         ctx.lineCap = 'round';
         ctx.globalAlpha = fx === 'fire' ? 0.4 : (fx === 'laser' ? 0.5 : 0.28);
         ctx.beginPath();
         ctx.moveTo(b.trail[0].x, b.trail[0].y);
-        if (fx === 'bolt') {                          // 闪电:锯齿拖尾
+        if (fx === 'bolt') {
           for (var i = 1; i < b.trail.length; i++) {
             var jx = (Math.random() - 0.5) * 8, jy = (Math.random() - 0.5) * 8;
             ctx.lineTo(b.trail[i].x + jx, b.trail[i].y + jy);
@@ -809,9 +906,40 @@
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      drawGlow(ctx, b.color, b.x, b.y, b.radius * (fx ? 3.4 : 3));
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.55, 0, Math.PI * 2); ctx.fill();
+
+      // 绘制弹道
+      if (tex) {
+        // 贴图渲染:从精灵图中取对应弹道(贴图竖向排列3个弹道)
+        var texSize = b.radius * 6;
+        var srcRow = Math.min(b.spreadCount || 0, 2); // 0,1,2 对应3行
+        var srcH = tex.height / 3;
+        ctx.drawImage(tex,
+          0, srcRow * srcH, tex.width, srcH,  // 源区域
+          b.x - texSize / 2, b.y - texSize / 2, texSize, texSize  // 目标区域
+        );
+      } else {
+        // 退回程序化绘制
+        drawGlow(ctx, b.color, b.x, b.y, b.radius * (fx ? 3.4 : 3));
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.55, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // 技能特效叠加(冰冻/火焰/闪电)
+      if (fx === 'ice') {
+        ctx.strokeStyle = 'rgba(127,224,255,0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 2.5, 0, Math.PI * 2); ctx.stroke();
+      } else if (fx === 'fire') {
+        drawGlow(ctx, '#ff7a3d', b.x, b.y, b.radius * 2.8, 0.35);
+      } else if (fx === 'bolt') {
+        ctx.strokeStyle = 'rgba(255,224,102,0.5)';
+        ctx.lineWidth = 1.5;
+        for (var j = 0; j < 3; j++) {
+          var jx2 = (Math.random() - 0.5) * 12, jy2 = (Math.random() - 0.5) * 12;
+          ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x + jx2, b.y + jy2); ctx.stroke();
+        }
+      }
+
       ctx.restore();
     },
 
