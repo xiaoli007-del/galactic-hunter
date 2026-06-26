@@ -99,7 +99,7 @@ async function main() {
   await evalJs(ws, `
     var G=window.G, R=G.Render, C=G.Config;
     var c=document.getElementById('stage'); var ctx=c.getContext('2d');
-    ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10'].forEach(function(k){
+    ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','t14','t15','t16','t17','t18','t19','t20','t21','t22','t23'].forEach(function(k){
       var a=new G.Entities.Alien(k, 360, 500);
       a.hitFlash=0.2; R.alien(ctx,a);
       a.slowTimer=1;a.slowMul=0.4;R.alien(ctx,a);
@@ -107,10 +107,11 @@ async function main() {
       if(a.isBoss){ for(var s=1;s<=3;s++){ a.bossStage=s; R.alien(ctx,a);} }
       if(k==='t7'){ a._dashTele=0.3;R.alien(ctx,a); a._dashTele=0;a._dashDur=0.5;R.alien(ctx,a);} // t7 预警/突进态
       if(k==='t8'){ a._aimArmed=true;a._aimAngle=Math.PI/2;R.alien(ctx,a);}                       // t8 蓄能态
+      if(k==='t23'){ a._aimArmed=true;R.alien(ctx,a); }                                          // t23 环射要塞蓄能态
     });
-    '怪 t1-t10 全状态渲染完成';
+    '怪 t1-t23 全状态渲染完成';
   `);
-  log('怪 t1-t10 全状态渲染 ✓');
+  log('怪 t1-t23 全状态渲染 ✓');
 
   // 3) 敌弹渲染 + aimed 生成
   await evalJs(ws, `

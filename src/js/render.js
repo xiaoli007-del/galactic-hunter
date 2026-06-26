@@ -209,45 +209,28 @@
       ctx.globalAlpha = 1;
     },
 
-    // —— 飞船(像素风精灵)——
-    //   使用像素风精灵渲染,根据等级切换不同的飞船造型。
+    // —— 飞船(机械装甲科幻·矢量模块化)——
+    //   按 level 组装 5 模块:引擎→翼→船体→武器→核心,随级模块化进化(v0.6 设定保留)。
     ship: function (ctx, ship) {
-      var lvl = ship.level || 1;
+      var lvl = Math.min(ship.level || 1, 5);
       var r = ship.radius, flash = ship.hitFlash > 0;
-      var PA = G.PixelArt;
-      var data = PA.SHIP_DATA[Math.min(lvl, 5)];
+      var glow = G.Config.SHIPS[lvl].glow;     // 等级光晕色
 
       ctx.save();
       ctx.translate(ship.x, ship.y);
       ctx.rotate(ship.aimAngle + Math.PI / 2);
 
-      // 绘制像素精灵
-      var scale = Math.max(3, Math.floor(r * 0.35));
-      var canvas = PA.getPixelCanvas('ship-lv' + lvl, data, scale);
-      ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-
-      // 发光核心(底部)
+      // 外光晕(等级色,柔和)
       ctx.globalCompositeOperation = 'lighter';
-      var pulse = 0.7 + 0.3 * Math.sin(Date.now() / 120);
-      drawGlow(ctx, '#00eeff', 0, r * 0.3, r * 0.4 * pulse, 0.6);
+      drawGlow(ctx, glow, 0, 0, r * 1.7, 0.18);
       ctx.globalCompositeOperation = 'source-over';
 
-      // 受击闪烁
-      if (flash) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.5;
-        ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-      }
-
-      // 引擎尾焰
-      ctx.globalCompositeOperation = 'lighter';
-      var flameLen = r * (0.8 + 0.2 * Math.sin(Date.now() / 55));
-      drawGlow(ctx, '#2a6bff', 0, r * 0.5 + flameLen * 0.3, r * 0.3, 0.4);
-      drawGlow(ctx, '#6ab4ff', 0, r * 0.5 + flameLen * 0.15, r * 0.2, 0.6);
-      drawGlow(ctx, '#eaf6ff', 0, r * 0.5, r * 0.12, 0.8);
-      ctx.globalCompositeOperation = 'source-over';
+      // 模块组装(底层→顶层):引擎尾焰 → 机翼 → 船体 → 武器 → 能量核心
+      this._shipEngine(ctx, r, lvl, flash);
+      this._shipWings(ctx, r, lvl, glow, flash);
+      this._shipHull(ctx, r, lvl, flash);
+      this._shipWeapons(ctx, r, lvl, flash);
+      this._shipCore(ctx, r, lvl, glow, flash);
 
       ctx.restore();
     },
@@ -418,57 +401,75 @@
       ctx.globalCompositeOperation = 'source-over';
     },
 
-    // —— 外星怪(像素风精灵)——
-    //   使用像素风精灵渲染,根据怪物类型切换不同的造型。
+    // —— 外星怪(机械装甲科幻·矢量)——
+    //   主体=按 def.color 染色的金属渐变(高光/本色/暗部)+ 铆钉/接缝(各 _alien* 内画);
+    //   中心统一发光弱点核(非Boss,受击高亮放大),作为"可击破核心"视觉锚点。
     alien: function (ctx, a) {
       var def = a.def, r = def.radius, flash = a.hitFlash > 0;
-      var PA = G.PixelArt;
-
-      // 选择怪物精灵
-      var data;
-      switch (a.type) {
-        case 't1': data = PA.ALIEN_T1; break;
-        case 't2': data = PA.ALIEN_T2; break;
-        case 't3': data = PA.ALIEN_T3; break;
-        case 't4': data = PA.ALIEN_T4; break;
-        case 't5': data = PA.ALIEN_T5; break;
-        case 't6': data = PA.ALIEN_T6; break;
-        default: data = PA.ALIEN_T1; break;
-      }
+      var wob = a.wob || 0;
 
       ctx.save();
       ctx.translate(a.x, a.y);
       ctx.rotate(a.angle);
 
-      // 绘制像素精灵
-      var scale = Math.max(2, Math.floor(r * 0.25));
-      var canvas = PA.getPixelCanvas('alien-' + a.type, data, scale);
-      ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-
-      // 外光晕
+      // 外光晕(怪物识别色)
       ctx.globalCompositeOperation = 'lighter';
-      drawGlow(ctx, def.color, 0, 0, r * 2, 0.4);
+      drawGlow(ctx, def.color, 0, 0, r * 1.9, 0.26);
       ctx.globalCompositeOperation = 'source-over';
 
-      // 受击闪烁
-      if (flash) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.5;
-        ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
+      // 主体金属渐变(按 def.color 染色:高光→本色→暗部)+ 深色描边;受击全白
+      var g = ctx.createLinearGradient(-r * 0.7, -r * 0.7, r * 0.7, r * 0.7);
+      if (flash) { g.addColorStop(0, '#fff'); g.addColorStop(1, '#fff'); }
+      else {
+        g.addColorStop(0, lighten(def.color, 0.42));
+        g.addColorStop(0.5, def.color);
+        g.addColorStop(1, darken(def.color, 0.5));
+      }
+      ctx.fillStyle = g;
+      ctx.strokeStyle = flash ? '#fff' : darken(def.color, 0.62);
+      ctx.lineWidth = Math.max(1.6, r * 0.07);
+      ctx.lineJoin = 'round';
+
+      // 按类型分派(普通/精英/Boss 各自的矢量造型)
+      switch (a.type) {
+        case 't1':  this._alienCrawler(ctx, r, wob); break;
+        case 't2':  this._alienDrone(ctx, r, wob); break;
+        case 't3':  this._alienBrute(ctx, r, wob); break;
+        case 't4':  this._alienWraith(ctx, r, wob); break;
+        case 't5':  this._alienElite(ctx, r, wob); break;
+        case 't6':  this._alienBoss(ctx, r, wob); break;
+        case 't7':  this._alienRipper(ctx, a, r, wob); break;
+        case 't8':  this._alienGuardian(ctx, a, r, wob); break;
+        case 't9':  this._alienColossus(ctx, a, r, wob); break;
+        case 't10': this._alienVoid(ctx, a, r, wob); break;
+        case 't11': this._alienJelly(ctx, r, wob); break;
+        case 't12': this._alienBiped(ctx, r, wob); break;
+        case 't13': this._alienDart(ctx, r, wob); break;
+        case 't14': this._alienStar(ctx, r, wob); break;
+        case 't15': this._alienDrill(ctx, r, wob); break;
+        case 't16': this._alienCluster(ctx, r, wob); break;
+        case 't17': this._alienHive(ctx, r, wob); break;
+        case 't18': this._alienBoomer(ctx, r, wob); break;
+        case 't19': this._alienRay(ctx, r, wob); break;
+        case 't20': this._alienGear(ctx, r, wob); break;
+        case 't21': this._alienTri(ctx, r, wob); break;
+        case 't22': this._alienPhantom(ctx, r, wob); break;
+        case 't23': this._alienBastion(ctx, a, r, wob); break;
+        default:    this._alienCrawler(ctx, r, wob); break;
       }
 
-      // 发光弱点核心(非 Boss)
+      // 中心发光弱点核(非Boss;受击高亮放大)—— 与各怪造型叠合,统一"可击破核心"视觉
       if (!a.isBoss) {
-        var wpulse = 0.85 + 0.15 * Math.sin(Date.now() / 120);
+        var wp = 0.85 + 0.15 * Math.sin(Date.now() / 120);
+        var wsize = r * 0.2 * wp * (flash ? 1.5 : 1);
         ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, '#ff3333', 0, 0, r * 0.5 * wpulse, 0.7);
+        drawGlow(ctx, '#ff5a2b', 0, 0, wsize * 2.4, 0.7);
         ctx.globalCompositeOperation = 'source-over';
-        var cg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.2 * wpulse);
-        cg.addColorStop(0, '#fff'); cg.addColorStop(0.4, '#ff6666'); cg.addColorStop(1, '#ff0000');
+        var cg = ctx.createRadialGradient(0, 0, 0, 0, 0, wsize);
+        if (flash) { cg.addColorStop(0, '#fff'); cg.addColorStop(1, '#ff5a2b'); }
+        else { cg.addColorStop(0, '#fff'); cg.addColorStop(0.4, '#ffb27a'); cg.addColorStop(1, '#ff5a2b'); }
         ctx.fillStyle = cg;
-        ctx.beginPath(); ctx.arc(0, 0, r * 0.2 * wpulse, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, wsize, 0, Math.PI * 2); ctx.fill();
       }
 
       ctx.restore();
@@ -835,7 +836,222 @@
       }
     },
 
-    // —— 敌弹(像素风精灵)——
+    // ===== 扩展怪物(机械装甲科幻·23种体系)=====
+    //   普通 t11–t21(纯下压造型;复用 alien() 设的金属渐变 fillStyle / 深色 strokeStyle / lineWidth):
+    //   11 装甲水母:圆顶装甲 + 下垂触须推进器(发光端)+ 装甲环纹
+    _alienJelly: function (ctx, r, wob) {
+      ctx.beginPath();
+      ctx.arc(0, -r * 0.1, r * 0.85, Math.PI, 0);
+      ctx.quadraticCurveTo(r * 0.7, r * 0.25, 0, r * 0.4);
+      ctx.quadraticCurveTo(-r * 0.7, r * 0.25, -r * 0.85, -r * 0.1);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      for (var s = 0; s < 3; s++) { ctx.beginPath(); ctx.arc(0, -r * 0.1, r * (0.34 + s * 0.2), Math.PI, 0); ctx.stroke(); }
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      for (var t = -2; t <= 2; t++) { var tx = t * r * 0.3; ctx.moveTo(tx, r * 0.35); ctx.quadraticCurveTo(tx + wob * 3, r * 0.75, tx + wob * 4, r * 1.05); }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      for (var g = -2; g <= 2; g++) drawGlow(ctx, '#4dd0e1', g * r * 0.3 + wob * 4, r * 1.05, r * 0.1, 0.6);
+      ctx.globalCompositeOperation = 'source-over';
+    },
+    //   12 双足机甲:梭形躯 + 双机械足(关节球)+ 顶置炮管 + 装甲接缝
+    _alienBiped: function (ctx, r, wob) {
+      ctx.beginPath();
+      ctx.moveTo(0, -r); ctx.quadraticCurveTo(r * 0.55, -r * 0.1, r * 0.4, r * 0.55);
+      ctx.lineTo(-r * 0.4, r * 0.55); ctx.quadraticCurveTo(-r * 0.55, -r * 0.1, 0, -r);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.moveTo(-r * 0.3, -r * 0.4); ctx.lineTo(r * 0.3, -r * 0.4); ctx.stroke();
+      ctx.fillStyle = '#1a2230'; ctx.beginPath(); ctx.arc(0, -r * 0.2, r * 0.12, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.3, r * 0.5); ctx.lineTo(-r * 0.5, r * 1.1 + wob * 4);
+      ctx.moveTo(r * 0.3, r * 0.5); ctx.lineTo(r * 0.5, r * 1.1 - wob * 4);
+      ctx.stroke();
+      ctx.fillStyle = '#1a2230';
+      ctx.beginPath(); ctx.arc(-r * 0.5, r * 1.1 + wob * 4, r * 0.1, 0, Math.PI * 2); ctx.arc(r * 0.5, r * 1.1 - wob * 4, r * 0.1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#3a4a5a'; ctx.fillRect(-r * 0.08, -r * 1.35, r * 0.16, r * 0.4);
+      ctx.fillStyle = '#080c14'; ctx.fillRect(-r * 0.08, -r * 1.4, r * 0.16, r * 0.07);
+    },
+    //   13 飞镖无人机:菱形飞镖 + 后掠尾翼 + 双眼 + 中线脊
+    _alienDart: function (ctx, r, wob) {
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 1.1); ctx.lineTo(r * 0.75, 0); ctx.lineTo(0, r * 0.9); ctx.lineTo(-r * 0.75, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.moveTo(0, -r * 0.6); ctx.lineTo(0, r * 0.6); ctx.stroke();
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.3, r * 0.5); ctx.lineTo(-r * 1.0, r * 0.85 + wob * 3);
+      ctx.moveTo(r * 0.3, r * 0.5); ctx.lineTo(r * 1.0, r * 0.85 - wob * 3);
+      ctx.stroke();
+      ctx.fillStyle = '#1a2230'; ctx.beginPath(); ctx.arc(-r * 0.25, -r * 0.1, r * 0.08, 0, Math.PI * 2); ctx.arc(r * 0.25, -r * 0.1, r * 0.08, 0, Math.PI * 2); ctx.fill();
+    },
+    //   14 装甲海星:五角海星机械体 + 中心铆钉环 + 角尖灯
+    _alienStar: function (ctx, r, wob) {
+      ctx.beginPath();
+      for (var i = 0; i < 10; i++) { var a = i / 10 * Math.PI * 2 - Math.PI / 2; var rr = (i % 2 ? r * 0.45 : r); var x = Math.cos(a) * rr, y = Math.sin(a) * rr; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#1a2230';
+      for (var rv = 0; rv < 5; rv++) { var ra = rv / 5 * Math.PI * 2 - Math.PI / 2; ctx.beginPath(); ctx.arc(Math.cos(ra) * r * 0.28, Math.sin(ra) * r * 0.28, 1.3, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalCompositeOperation = 'lighter';
+      for (var c = 0; c < 5; c++) { var ca = c / 5 * Math.PI * 2 - Math.PI / 2; drawGlow(ctx, '#ffb74d', Math.cos(ca) * r * 0.8, Math.sin(ca) * r * 0.8, r * 0.1, 0.6); }
+      ctx.globalCompositeOperation = 'source-over';
+    },
+    //   15 钻头钻探者:圆柱主体 + 装甲环带 + 旋转钻头鼻锥 + 双侧翼
+    _alienDrill: function (ctx, r, wob) {
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.5, -r * 0.3); ctx.lineTo(r * 0.5, -r * 0.3); ctx.lineTo(r * 0.5, r * 0.6); ctx.lineTo(-r * 0.5, r * 0.6);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1.4; ctx.strokeStyle = 'rgba(15,22,34,0.55)';
+      for (var b = 0; b < 3; b++) { var by = -r * 0.2 + b * r * 0.25; ctx.beginPath(); ctx.moveTo(-r * 0.5, by); ctx.lineTo(r * 0.5, by); ctx.stroke(); }
+      ctx.save(); ctx.translate(0, -r * 0.3);
+      ctx.fillStyle = '#3a4a5a'; ctx.beginPath(); ctx.moveTo(0, -r * 1.1); ctx.lineTo(r * 0.45, 0); ctx.lineTo(-r * 0.45, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(15,22,34,0.7)'; ctx.lineWidth = 1.2;
+      for (var s = 0; s < 3; s++) { ctx.beginPath(); ctx.moveTo(-r * 0.4, -s * r * 0.25); ctx.quadraticCurveTo(0, -s * r * 0.25 - r * 0.15, r * 0.4, -s * r * 0.25); ctx.stroke(); }
+      ctx.restore();
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(-r * 0.5, r * 0.1); ctx.lineTo(-r * 1.1, r * 0.4 + wob * 3); ctx.moveTo(r * 0.5, r * 0.1); ctx.lineTo(r * 1.1, r * 0.4 - wob * 3); ctx.stroke();
+    },
+    //   16 晶簇机械体:多面晶体簇 + 棱面高光(中心向各顶)+ 内能量核
+    _alienCluster: function (ctx, r, wob) {
+      ctx.beginPath();
+      var pts = [[0, -1], [0.7, -0.5], [1, 0.2], [0.5, 0.9], [-0.5, 0.9], [-1, 0.2], [-0.7, -0.5]];
+      for (var i = 0; i < pts.length; i++) { i ? ctx.lineTo(pts[i][0] * r, pts[i][1] * r) : ctx.moveTo(pts[i][0] * r, pts[i][1] * r); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.beginPath();
+      for (var k = 0; k < pts.length; k++) { ctx.moveTo(0, 0); ctx.lineTo(pts[k][0] * r, pts[k][1] * r); }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, '#4db6ac', 0, 0, r * 0.5, 0.5);
+      ctx.globalCompositeOperation = 'source-over';
+    },
+    //   17 蜂巢炮台:六边形蜂巢 + 多小炮口(环形)+ 中心核
+    _alienHive: function (ctx, r, wob) {
+      ctx.beginPath();
+      for (var i = 0; i < 6; i++) { var a = i / 6 * Math.PI * 2; var x = Math.cos(a) * r * 0.85, y = Math.sin(a) * r * 0.85; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2); ctx.stroke();
+      for (var c = 0; c < 6; c++) {
+        var ca = c / 6 * Math.PI * 2;
+        var cx = Math.cos(ca) * r * 0.55, cy = Math.sin(ca) * r * 0.55;
+        ctx.fillStyle = '#080c14'; ctx.beginPath(); ctx.arc(cx, cy, r * 0.1, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, '#fff176', 0, 0, r * 0.35, 0.6);
+      for (var g = 0; g < 6; g++) { var ga = g / 6 * Math.PI * 2; drawGlow(ctx, '#fff176', Math.cos(ga) * r * 0.55, Math.sin(ga) * r * 0.55, r * 0.06, 0.7); }
+      ctx.globalCompositeOperation = 'source-over';
+    },
+    //   18 回旋镖翼:双回旋镖翼 + 中线 + 翼尖发光
+    _alienBoomer: function (ctx, r, wob) {
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 0.5); ctx.quadraticCurveTo(r * 1.1, -r * 0.6, r * 1.1, r * 0.3);
+      ctx.quadraticCurveTo(r * 0.5, r * 0.1, 0, r * 0.5);
+      ctx.quadraticCurveTo(-r * 0.5, r * 0.1, -r * 1.1, r * 0.3);
+      ctx.quadraticCurveTo(-r * 1.1, -r * 0.6, 0, -r * 0.5);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.moveTo(0, -r * 0.5); ctx.lineTo(0, r * 0.5); ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, '#7986cb', 0, 0, r * 0.35, 0.6);
+      drawGlow(ctx, '#7986cb', r * 1.1, r * 0.3 + wob * 3, r * 0.12, 0.8);
+      drawGlow(ctx, '#7986cb', -r * 1.1, r * 0.3 - wob * 3, r * 0.12, 0.8);
+      ctx.globalCompositeOperation = 'source-over';
+    },
+    //   19 装甲鳐:扁菱形鳐 + 尾刺 + 翼纹
+    _alienRay: function (ctx, r, wob) {
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 0.5); ctx.quadraticCurveTo(r * 1.1, 0, 0, r * 0.4);
+      ctx.quadraticCurveTo(-r * 1.1, 0, 0, -r * 0.5);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.moveTo(-r * 0.8, 0); ctx.lineTo(r * 0.8, 0); ctx.stroke();
+      ctx.fillStyle = '#1a2230'; ctx.beginPath(); ctx.arc(0, -r * 0.1, r * 0.1, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(0, r * 0.4); ctx.lineTo(0, r * 1.1 + wob * 3); ctx.stroke();
+    },
+    //   20 齿轮巨虫:齿轮形主体(齿)+ 中心轴 + 装甲孔
+    _alienGear: function (ctx, r, wob) {
+      var teeth = 10;
+      ctx.beginPath();
+      for (var i = 0; i < teeth * 2; i++) { var a = i / (teeth * 2) * Math.PI * 2; var rr = (i % 2 ? r * 0.7 : r); var x = Math.cos(a) * rr, y = Math.sin(a) * rr; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#1a2230'; ctx.beginPath(); ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2); ctx.fill();
+      for (var h = 0; h < 5; h++) { var ha = h / 5 * Math.PI * 2; ctx.beginPath(); ctx.arc(Math.cos(ha) * r * 0.32, Math.sin(ha) * r * 0.32, r * 0.06, 0, Math.PI * 2); ctx.fill(); }
+    },
+    //   21 三联拦截机:三连体无人机(中央 + 左右副体)+ 连接梁
+    _alienTri: function (ctx, r, wob) {
+      var drawPod = function (cx, cy, sz) {
+        ctx.beginPath(); ctx.moveTo(cx, cy - sz); ctx.lineTo(cx + sz * 0.7, cy); ctx.lineTo(cx, cy + sz * 0.8); ctx.lineTo(cx - sz * 0.7, cy);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      };
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(15,22,34,0.5)';
+      ctx.beginPath(); ctx.moveTo(-r * 0.7, 0); ctx.lineTo(r * 0.7, 0); ctx.stroke();
+      drawPod(0, 0, r * 0.55);
+      drawPod(-r * 0.75, r * 0.15 + wob * 3, r * 0.4);
+      drawPod(r * 0.75, r * 0.15 - wob * 3, r * 0.4);
+      ctx.fillStyle = '#1a2230'; ctx.beginPath(); ctx.arc(0, 0, r * 0.12, 0, Math.PI * 2); ctx.fill();
+    },
+    //   精英:
+    //   22 闪现幽影王(blink):半透明波浪机械体 + 多触须发光端(比 t4 幽灵更复杂)
+    _alienPhantom: function (ctx, r, wob) {
+      ctx.globalAlpha = 0.82;
+      ctx.beginPath();
+      var pts = 11;
+      for (var i = 0; i <= pts; i++) { var ang = i / pts * Math.PI * 2; var rr = r * (0.75 + 0.25 * Math.sin(ang * 3 + wob * 4)); var x = Math.cos(ang) * rr, y = Math.sin(ang) * rr; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.beginPath();
+      for (var s = 0; s < 3; s++) { ctx.moveTo(-r * 0.45, -r * 0.3 + s * r * 0.3); ctx.quadraticCurveTo(0, -r * 0.15 + s * r * 0.3, r * 0.45, -r * 0.3 + s * r * 0.3); }
+      ctx.stroke();
+      ctx.globalAlpha = 0.5; ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (var t = 0; t < 4; t++) { var ta = t / 4 * Math.PI * 2 + Math.PI / 4; ctx.moveTo(Math.cos(ta) * r * 0.5, Math.sin(ta) * r * 0.5); ctx.quadraticCurveTo(Math.cos(ta) * r * 0.9, Math.sin(ta) * r * 0.9, Math.cos(ta) * r * 1.3 + wob * 3, Math.sin(ta) * r * 1.3); }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      for (var g = 0; g < 4; g++) { var ga2 = g / 4 * Math.PI * 2 + Math.PI / 4; drawGlow(ctx, '#ba68c8', Math.cos(ga2) * r * 1.3 + wob * 3, Math.sin(ga2) * r * 1.3, r * 0.13, 0.7); }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    },
+    //   23 环射要塞(gunner + ring):八边形堡垒 + 旋转环炮荚(随预警 _aimArmed 充能);中心核由 alien 统一弱点核补
+    _alienBastion: function (ctx, a, r, wob) {
+      var armed = a._aimArmed;
+      ctx.beginPath();
+      var pts = [[0, -1], [0.7, -0.7], [1, 0], [0.7, 0.7], [0, 1], [-0.7, 0.7], [-1, 0], [-0.7, -0.7]];
+      for (var i = 0; i < pts.length; i++) { i ? ctx.lineTo(pts[i][0] * r * 0.88, pts[i][1] * r * 0.88) : ctx.moveTo(pts[i][0] * r * 0.88, pts[i][1] * r * 0.88); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(15,22,34,0.6)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#10182a';
+      for (var rv = 0; rv < 8; rv++) { var ra = rv / 8 * Math.PI * 2; ctx.beginPath(); ctx.arc(Math.cos(ra) * r * 0.7, Math.sin(ra) * r * 0.7, 1.4, 0, Math.PI * 2); ctx.fill(); }
+      var pods = 6;
+      var spin = (Date.now() / 1200) % (Math.PI * 2);
+      for (var p = 0; p < pods; p++) {
+        var pa = spin + p / pods * Math.PI * 2;
+        var px = Math.cos(pa) * r * 0.78, py = Math.sin(pa) * r * 0.78;
+        ctx.fillStyle = '#3a4a5a'; ctx.beginPath(); ctx.arc(px, py, r * 0.12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#080c14'; ctx.beginPath(); ctx.arc(px, py, r * 0.05, 0, Math.PI * 2); ctx.fill();
+      }
+      if (armed) {
+        var cg = 0.5 + 0.5 * Math.sin(Date.now() / 40);
+        ctx.globalCompositeOperation = 'lighter';
+        for (var pe = 0; pe < pods; pe++) { var pea = spin + pe / pods * Math.PI * 2; drawGlow(ctx, '#ff7043', Math.cos(pea) * r * 0.78, Math.sin(pea) * r * 0.78, r * 0.22 * (0.6 + cg * 0.6), 0.7 + cg * 0.3); }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, '#ff7043', 0, 0, r * 0.4, 0.55);
+      ctx.globalCompositeOperation = 'source-over';
+    },
+
+    // —— 敌弹(机械装甲科幻·矢量)——
+    //   发光能量菱形核 + 拖尾光带(加色混合)。
     enemyBullet: function (ctx, b) {
       ctx.save();
       if (b.trail.length > 1) {
@@ -848,12 +1064,18 @@
         ctx.globalAlpha = 1;
       }
 
-      // 像素风敌弹精灵
-      var PA = G.PixelArt;
-      var data = PA.ENEMY_BULLET;
-      var scale = Math.max(2, Math.floor(b.radius * 1.5));
-      var canvas = PA.getPixelCanvas('enemy-bullet', data, scale);
-      ctx.drawImage(canvas, b.x - canvas.width / 2, b.y - canvas.height / 2);
+      // 矢量能量核(菱形 + 径向辉光 + 白心)
+      var br = b.radius;
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, b.color, b.x, b.y, br * 2.6, 0.5);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.save();
+      ctx.translate(b.x, b.y); ctx.rotate(Math.PI / 4);
+      var dg = ctx.createRadialGradient(0, 0, 0, 0, 0, br * 1.1);
+      dg.addColorStop(0, '#fff'); dg.addColorStop(0.5, b.color); dg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = dg;
+      ctx.fillRect(-br * 0.85, -br * 0.85, br * 1.7, br * 1.7);
+      ctx.restore();
 
       ctx.restore();
     },
@@ -911,12 +1133,20 @@
         ctx.globalAlpha = 1;
       }
 
-      // 像素风弹道精灵
-      var PA = G.PixelArt;
-      var data = PA.PLAYER_BULLET;
-      var scale = Math.max(2, Math.floor(b.radius * 1.5));
-      var canvas = PA.getPixelCanvas('player-bullet', data, scale);
-      ctx.drawImage(canvas, b.x - canvas.width / 2, b.y - canvas.height / 2);
+      // 矢量弹头(发光能量胶囊):激光=粗贯穿柱,其余=椭圆能量核 + 白心
+      var br = b.radius;
+      if (fx === 'laser') {
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, b.color, b.x, b.y, br * 3.4, 0.5);
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 0.8, br * 2.4, 0, 0, Math.PI * 2); ctx.fill();
+      } else {
+        drawGlow(ctx, b.color, b.x, b.y, br * 2.6, 0.42);
+        var bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, br * 1.5);
+        bg.addColorStop(0, '#fff'); bg.addColorStop(0.5, b.color); bg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bg;
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 0.9, br * 1.7, 0, 0, Math.PI * 2); ctx.fill();
+      }
 
       // 技能特效
       if (fx === 'ice') {

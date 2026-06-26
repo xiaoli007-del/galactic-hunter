@@ -97,6 +97,25 @@
               2: { pattern: 'ring',   every: 1.9, count: 22, speed: 280, telegraph: 0 },                       // 密集环
               3: { pattern: 'spiral', every: 0.10, count: 6, spiralStep: 0.24, speed: 330, telegraph: 0 },   // 六臂急旋
             } } },
+      // ===== 扩展怪物(机械装甲科幻·23种体系)=====
+      //   普通 t11–t21(11种):tier 1–4,纯下压/简单行为,spawnWeight 中高,差异化靠造型。
+      //   精英 t22/t23(2种):tier 5–6,特殊行为(t22 闪现 blink / t23 环射 gunner+ring),spawnWeight 低。
+      //   → 合计:普通(t1–t4 + t11–t21 = 15)/ 精英(t5,t7,t8,t22,t23 = 5)/ Boss(t6,t9,t10 = 3)。
+      t11: { name: '装甲水母',   tier: 2, hp: 2,  score: 20,  coin: 6,   radius: 22, speed: 78, spawnWeight: 22, color: '#4dd0e1', behavior: null },
+      t12: { name: '双足机甲',   tier: 3, hp: 6,  score: 70,  coin: 14,  radius: 28, speed: 52, spawnWeight: 16, color: '#8d6e63', behavior: null },
+      t13: { name: '飞镖无人机', tier: 2, hp: 3,  score: 35,  coin: 8,   radius: 20, speed: 88, spawnWeight: 20, color: '#b39ddb', behavior: null },
+      t14: { name: '装甲海星',   tier: 3, hp: 7,  score: 85,  coin: 16,  radius: 30, speed: 50, spawnWeight: 14, color: '#ffb74d', behavior: null },
+      t15: { name: '钻头钻探者', tier: 4, hp: 10, score: 110, coin: 20,  radius: 26, speed: 64, spawnWeight: 10, color: '#90a4ae', behavior: null },
+      t16: { name: '晶簇机械体', tier: 3, hp: 8,  score: 90,  coin: 17,  radius: 28, speed: 56, spawnWeight: 13, color: '#4db6ac', behavior: null },
+      t17: { name: '蜂巢炮台',   tier: 4, hp: 12, score: 130, coin: 24,  radius: 32, speed: 46, spawnWeight: 9,  color: '#fff176', behavior: null },
+      t18: { name: '回旋镖翼',   tier: 2, hp: 4,  score: 40,  coin: 9,   radius: 24, speed: 84, spawnWeight: 18, color: '#7986cb', behavior: null },
+      t19: { name: '装甲鳐',     tier: 3, hp: 9,  score: 95,  coin: 18,  radius: 30, speed: 54, spawnWeight: 12, color: '#a1887f', behavior: null },
+      t20: { name: '齿轮巨虫',   tier: 4, hp: 11, score: 120, coin: 22,  radius: 30, speed: 48, spawnWeight: 9,  color: '#cfd8dc', behavior: null },
+      t21: { name: '三联拦截机', tier: 3, hp: 6,  score: 75,  coin: 15,  radius: 26, speed: 60, spawnWeight: 15, color: '#81d4fa', behavior: null },
+      //   精英:t22 闪现幽影王(blink 回避,复用 t4 行为,造型更复杂)、t23 环射要塞(gunner + ring 全圆弹幕 + 预警)
+      t22: { name: '闪现幽影王', tier: 5, hp: 26, score: 380, coin: 75,  radius: 34, speed: 72, spawnWeight: 4,  color: '#ba68c8', behavior: 'blink' },
+      t23: { name: '环射要塞',   tier: 6, hp: 48, score: 600, coin: 110, radius: 38, speed: 40, spawnWeight: 3,  color: '#ff7043', behavior: 'gunner',
+             fire: { pattern: 'ring', every: 2.4, count: 14, speed: 300, telegraph: 0.5 } },
     },
     // 特殊行为数值(v0.3)
     BEHAVIOR: {
