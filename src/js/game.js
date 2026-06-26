@@ -537,11 +537,9 @@
     _spawnEBullet: function (alien, ang, sp, col) {
       if (this.enemyBullets.length >= C.ENEMY_BULLET.maxOnScreen) return;
       var er = alien.radius + 4;
-      var eb = new Ent.EnemyBullet(
+      this.enemyBullets.push(new Ent.EnemyBullet(
         alien.x + Math.cos(ang) * er, alien.y + Math.sin(ang) * er,
-        Math.cos(ang) * sp, Math.sin(ang) * sp, col);
-      eb.alienType = alien.type;  // 传递怪物类型给敌弹渲染
-      this.enemyBullets.push(eb);
+        Math.cos(ang) * sp, Math.sin(ang) * sp, col));
     },
 
     explode: function (x, y, color, n) {

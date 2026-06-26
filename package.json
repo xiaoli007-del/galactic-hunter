@@ -1,0 +1,28 @@
+{
+  "name": "galactichunter",
+  "version": "1.0.0",
+  "description": "银河猎手 — 太空射击休闲小游戏(类捕鱼达人的太空化改造)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "ws": "^8.21.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xiaoli007-del/galactic-hunter.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/xiaoli007-del/galactic-hunter/issues"
+  },
+  "homepage": "https://github.com/xiaoli007-del/galactic-hunter#readme"
+}

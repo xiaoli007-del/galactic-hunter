@@ -19,6 +19,9 @@
     ctx: null,
     // 指针状态(逻辑坐标系)
     pointer: { x: 0, y: 0, down: false, justPressed: false },
+    // 键盘状态(暂停等用):keys=持续按下,_justKeys=本帧按下的瞬间(单帧标志)
+    keys: {},
+    _justKeys: {},
     _scale: 1,
     _offsetX: 0,
     _offsetY: 0,
@@ -48,8 +51,26 @@
       }, { passive: false });
       window.addEventListener('touchend', function () { self.pointer.down = false; });
 
+      // 键盘(P/ESC 暂停等)。小游戏移植时换 wx.onKeyDown,逻辑层不变。
+      window.addEventListener('keydown', function (e) {
+        var k = (e.key || e.keyCode === 27 && 'escape' || '').toLowerCase();
+        if (!k && e.keyCode) k = String.fromCharCode(e.keyCode).toLowerCase();
+        if (!k) return;
+        if (!self.keys[k]) self._justKeys[k] = true;   // 未按→按下的瞬间标记
+        self.keys[k] = true;
+        // 暂停键阻止默认(避免 ESC 退出全屏等干扰),其余不拦
+        if (k === 'p' || k === 'escape') e.preventDefault();
+      });
+      window.addEventListener('keyup', function (e) {
+        var k = (e.key || '').toLowerCase();
+        self.keys[k] = false;
+      });
+
       return this;
     },
+
+    // 某键是否在本帧"刚刚按下"(单帧消费,防连发)
+    isKeyJustPressed: function (k) { return !!this._justKeys[k]; },
 
     _resize: function () {
       var cfg = G.Config;
@@ -92,6 +113,7 @@
     // 每帧末由 Game 调用,清掉单帧标志
     endFrame: function () {
       this.pointer.justPressed = false;
+      this._justKeys = {};
     },
 
     // 单调时钟(秒),用于音效节流等;无 performance 时退回 Date 毫秒
