@@ -707,6 +707,74 @@ assert(true, '敌弹(拖尾+尖刺)渲染路径无异常');
 G.Sound.play('enemyFire');
 assert(true, 'enemyFire 音效无 AudioContext 安全运行');
 
+// ==================== v0.10:船舰副炮养成实装(GDD §4.3 炮位阶梯)====================
+console.log('\n[20] v0.10 副炮 — 配置阶梯(炮位解锁)');
+assert(G.Config.SHIPS[1].turrets === 0, 'Lv1 侦察艇无副炮');
+assert(G.Config.SHIPS[2].turrets === 1 && G.Config.SHIPS[2].turretAuto === false, 'Lv2 驱逐舰 1门固定朝上(双炮位)');
+assert(G.Config.SHIPS[3].turrets === 1 && G.Config.SHIPS[3].turretAuto === true, 'Lv3 巡洋舰 1门自动锁敌(+自动副炮)');
+assert(G.Config.SHIPS[4].turrets === 2 && G.Config.SHIPS[4].turretAuto === true, 'Lv4 战列舰 2门自动锁敌(三炮位)');
+assert(G.Config.SHIPS[5].turrets === 2 && G.Config.SHIPS[5].turretAuto === true, 'Lv5 旗舰 2门自动锁敌(全向射击)');
+assert(typeof G.Config.TURRET === 'object' && G.Config.TURRET.pierce === 0, 'TURRET 全局配置已挂载且不贯穿');
+
+console.log('\n[21] v0.10 副炮 — 自动开火与弹道属性');
+Game.startGame();
+Game.weaponLevel = 1; Game.shipLevel = 1; Game._syncShipVisual();
+Game.bullets.length = 0; Game._fireTurrets(1.0);
+assert(Game.bullets.length === 0, 'Lv1 无副炮 → 不生成弹');
+// Lv2 1门固定朝上:vx≈0、vy<0
+Game.shipLevel = 2; Game._syncShipVisual();
+Game.bullets.length = 0; Game._fireTurrets(1.0);
+var t2b = Game.bullets[0];
+assert(Game.bullets.length === 1, 'Lv2 副炮生成 1 发');
+assert(t2b.vy < 0 && Math.abs(t2b.vx) < 1, 'Lv2 副炮固定朝上 (vy=' + t2b.vy.toFixed(0) + ')');
+assert(t2b.turret === true && t2b.skill === null, '副炮弹标记 turret、无 skill');
+assert(t2b.color === G.Config.TURRET.color && t2b.radius === G.Config.TURRET.radius, '副炮弹色/半径=TURRET 配置');
+assert(t2b.pierce === 0, '副炮弹不贯穿 (pierce=0)');
+assert(t2b.damage === G.Config.SHIPS[2].turretDmg, '副炮弹伤害=turretDmg(不乘 fireMul, got ' + t2b.damage + ')');
+// Lv4 2门(场上无怪 → 退回朝上)
+Game.shipLevel = 4; Game._syncShipVisual();
+Game.bullets.length = 0; Game._fireTurrets(1.0);
+assert(Game.bullets.length === 2, 'Lv4 副炮生成 2 发(机翼左右)');
+
+console.log('\n[22] v0.10 副炮 — 自动锁敌 + 击杀链路');
+Game.startGame();
+Game.weaponLevel = 1; Game.shipLevel = 3; Game._syncShipVisual();   // 巡洋舰 1门自锁
+// 放一只怪在飞船右上方(非正上方),验证副炮弹朝目标而非纯朝上
+Game.aliens.length = 0;
+var tgtA = new G.Entities.Alien('t1', Game.ship.x + 200, Game.ship.y - 200);
+Game.aliens.push(tgtA);
+Game.ship._aliens = Game.aliens;
+Game.bullets.length = 0; Game._fireTurrets(1.0);
+var t3b = Game.bullets[0];
+assert(t3b.vx > 1 && t3b.vy < 0, 'Lv3 自锁:副炮弹朝目标方向 (vx=' + t3b.vx.toFixed(0) + ',vy=' + t3b.vy.toFixed(0) + ')');
+// 副炮弹不受 activeSkill 影响(纯物理)
+Game.activeSkill = 'fire';
+Game.bullets.length = 0; Game._fireTurrets(1.0);
+assert(Game.bullets[0].skill === null, '副炮弹不受 activeSkill 影响(纯物理)');
+// 副炮弹命中击杀:手动构造一发副炮弹叠到怪身上,验证走通用碰撞/击杀链路
+Game.startGame();
+Game.weaponLevel = 1; Game.shipLevel = 3; Game._syncShipVisual();
+var tkDmg = G.Config.SHIPS[3].turretDmg;   // 2
+var kpA = new G.Entities.Alien('t1', 360, 300);   // 远离飞船(避免撞船干扰)
+kpA.hp = tkDmg; kpA.maxHp = tkDmg;
+Game.aliens.length = 0; Game.aliens.push(kpA);
+var tb = new G.Entities.Bullet(kpA.x, kpA.y, 0, -100, G.Config.WEAPONS[1], tkDmg, null);
+tb.color = G.Config.TURRET.color; tb.radius = G.Config.TURRET.radius; tb.pierce = 0; tb.turret = true;
+Game.bullets.length = 0; Game.bullets.push(tb);
+var beforeKills = Game.killCount;
+Game.collisions();
+assert(kpA.dead === true, '副炮弹命中击杀怪物');
+assert(Game.killCount === beforeKills + 1, '副炮击杀走 killAlien 链路 (kills ' + beforeKills + ' → ' + Game.killCount + ')');
+// startGame 重置 turretTimer
+Game.turretTimer = 99; Game.startGame();
+assert(Game.turretTimer === 0, 'startGame 重置 turretTimer');
+// 副炮座渲染路径(Lv1 无 / Lv2 单 / Lv5 双)
+for (var tl = 1; tl <= 5; tl++) {
+  Game.shipLevel = tl; Game._syncShipVisual();
+  Game.ship.update(0.02); Game.ship.draw(makeCtx());
+}
+assert(true, '飞船 Lv1→Lv5 含副炮座渲染路径无异常');
+
 console.log('\n==============================');
 console.log('结果: ' + pass + ' 通过 / ' + fail + ' 失败');
 console.log(fail === 0 ? '✅ 冒烟测试全部通过' : '❌ 存在失败项', '\n');

@@ -225,11 +225,12 @@
       drawGlow(ctx, glow, 0, 0, r * 1.7, 0.18);
       ctx.globalCompositeOperation = 'source-over';
 
-      // 模块组装(底层→顶层):引擎尾焰 → 机翼 → 船体 → 武器 → 能量核心
+      // 模块组装(底层→顶层):引擎尾焰 → 机翼 → 船体 → 武器 → 副炮座(v0.10) → 能量核心
       this._shipEngine(ctx, r, lvl, flash);
       this._shipWings(ctx, r, lvl, glow, flash);
       this._shipHull(ctx, r, lvl, flash);
       this._shipWeapons(ctx, r, lvl, flash);
+      this._shipTurrets(ctx, r, lvl, flash);
       this._shipCore(ctx, r, lvl, glow, flash);
 
       ctx.restore();
@@ -370,6 +371,35 @@
         ctx.fillStyle = metalGrad(ctx, 0, -r * 1.0, 0, -r * 0.85, flash);
         ctx.fillRect(-r * 0.48, -r * 0.96, r * 0.96, r * 0.13);
       }
+    },
+
+    // 副炮座(v0.10):船舰自带副炮塔,随舰级解锁门数(GDD §4.3 炮位阶梯)。
+    //   Lv2-3 = 1门居中(船体下部,避开顶部主炮管与驾驶舱);Lv4-5 = 2门机翼左右对称。
+    //   炮塔座固定朝上画(短炮管 + 炮口蓄能芯,副炮弹色);自动锁敌由子弹方向体现,不旋转模型。
+    _shipTurrets: function (ctx, r, t, flash) {
+      var n = G.Config.SHIPS[t].turrets || 0;
+      if (n <= 0) return;     // Lv1 无副炮
+      var col = G.Config.TURRET.color;
+      var drawOne = function (ox) {
+        var cy = r * 0.12;   // 副炮座中心(机翼前缘,避开主炮管 -1.3r 与驾驶舱 -0.55r)
+        // 底座(金属梯形)+ 描边
+        ctx.fillStyle = metalGrad(ctx, ox - r * 0.13, cy, ox + r * 0.13, cy + r * 0.16, flash);
+        ctx.beginPath();
+        ctx.moveTo(ox - r * 0.13, cy + r * 0.16); ctx.lineTo(ox + r * 0.13, cy + r * 0.16);
+        ctx.lineTo(ox + r * 0.08, cy); ctx.lineTo(ox - r * 0.08, cy); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = flash ? '#fff' : '#8aa0c0'; ctx.lineWidth = 1; ctx.stroke();
+        // 短炮管(朝上)+ 炮口环(深)
+        ctx.fillStyle = metalGrad(ctx, ox - r * 0.05, cy - r * 0.18, ox + r * 0.05, cy, flash);
+        ctx.fillRect(ox - r * 0.045, cy - r * 0.2, r * 0.09, r * 0.22);
+        ctx.fillStyle = flash ? '#fff' : '#080c14';
+        ctx.fillRect(ox - r * 0.045, cy - r * 0.22, r * 0.09, r * 0.05);
+        // 炮口蓄能芯(发光,副炮弹色 —— 自动锁敌 Lv3+ 略亮)
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, col, ox, cy - r * 0.22, r * (t >= 3 ? 0.12 : 0.1), 0.85);
+        ctx.globalCompositeOperation = 'source-over';
+      };
+      if (n === 1) drawOne(0);
+      else { drawOne(-r * 0.5); drawOne(r * 0.5); }
     },
 
     // 能量核心(v0.8 雷电风):多层光晕 + 中心炽核 + 旋转能量环(L4+ 悬浮旋转)。

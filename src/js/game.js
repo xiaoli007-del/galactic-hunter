@@ -42,6 +42,7 @@
     screenFlash: 0,
     _clickConsumed: false,
     _bossIdx: 0,              // v0.8:Boss 轮换序号(t6→t9→t10→t6…);startGame 重置为 0(首 Boss 恒 t6)
+    turretTimer: 0,           // v0.10:副炮自动开火计时(按 SHIPS[shipLevel].turretRate 节奏连发)
 
     init: function () {
       this.loadSave();
@@ -119,6 +120,7 @@
       this.enemyBullets.length = 0;         // v0.8:清空场上敌弹
       this._bossIdx = 0;                    // v0.8:Boss 轮换序号归零(首 Boss 恒 t6)
       this.activeSkill = null;             // v0.5:每局重置技能(开局用武器默认弹道)
+      this.turretTimer = 0;               // v0.10:副炮计时归零(每局重置,与主开火解耦)
       this.powerupTimer = G.Config.POWERUP.dropEvery;   // 首个胶囊倒计时
       this.ship._aliens = this.aliens;      // v0.5:同步目标列表给飞船自动锁敌(避免实体反向依赖 Game)
       this.ship.hp = this.ship.maxHp;
@@ -214,6 +216,9 @@
         this.fireTimer = 0;
       }
 
+      // v0.10:船舰副炮自动开火(独立射速,不依赖玩家点击;按舰级解锁门数/模式)
+      this._fireTurrets(dt);
+
       this.updateWaves(dt);
       this.updateEntities(dt);
       this.collisions();
@@ -254,6 +259,40 @@
         b.spreadCount = i;  // 弹道序号,用于贴图行选择
         this.bullets.push(b);
       }
+    },
+
+    // v0.10:船舰副炮自动开火 —— 按 SHIPS[shipLevel] 配置自动连发辅助火力(GDD §4.3 炮位阶梯)。
+    //   门数 turrets:0(无)/1(Lv2-3)/2(Lv4-5);turretAuto:固定朝上(Lv2)或自动锁敌(Lv3+,「全向射击」)。
+    //   副炮弹独立伤害(不乘 fireMul)、纯物理(skill=null 不吃技能);复用 Bullet,渲染/碰撞链路通用零特判。
+    //   自动锁敌用 Ship._findTarget(v0.7 保留未用,现启用);无目标退回朝上。
+    _fireTurrets: function (dt) {
+      var sDef = C.SHIPS[this.shipLevel];
+      var n = sDef.turrets || 0;
+      if (n <= 0) { this.turretTimer = 0; return; }
+      var interval = 1 / sDef.turretRate;
+      this.turretTimer += dt;
+      if (this.turretTimer < interval) return;
+      this.turretTimer -= interval;          // 仅扣一发间隔(累计防漏发)
+      var r = this.ship.radius, sx = this.ship.x, sy = this.ship.y;
+      // 副炮座位置:1门居中(船体下部);2门机翼左右对称
+      var offs = n === 1 ? [0] : [-r * 0.5, r * 0.5];
+      // 发射方向:固定模式朝上(-π/2);自动模式锁最近敌,无目标退回朝上
+      var base = -Math.PI / 2;
+      if (sDef.turretAuto) {
+        var tgt = this.ship._findTarget();
+        if (tgt) base = Math.atan2(tgt.y - sy, tgt.x - sx);
+      }
+      for (var i = 0; i < n; i++) this._fireTurret(sx + offs[i], sy, base, sDef);
+    },
+    _fireTurret: function (x, y, ang, sDef) {
+      var T = C.TURRET;
+      var b = new Ent.Bullet(x, y, Math.cos(ang) * T.speed, Math.sin(ang) * T.speed,
+        C.WEAPONS[this.weaponLevel], sDef.turretDmg, null);
+      b.color = T.color;     // 副炮弹色(覆盖武器色)
+      b.radius = T.radius;   // 副炮弹更细(覆盖默认 5)
+      b.pierce = T.pierce;   // 不贯穿(覆盖武器 pierce)
+      b.turret = true;       // 标记副炮弹(render 可选区分,目前沿用通用渲染)
+      this.bullets.push(b);
     },
 
     // —— 波次刷新 ——
@@ -814,7 +853,9 @@
       var sNext = this.shipLevel + 1;
       var sCost = sMaxed ? 0 : C.SHIPS[sNext].cost;
       var sCanBuy = !sMaxed && this.coins >= sCost;
-      var sStat = '火力 ×' + sDef.fireMul.toFixed(1) + '  ·  伤害 ' + effDmg;
+      var sTurret = sDef.turrets || 0;
+      var sTStat = sTurret > 0 ? ('副炮×' + sTurret + (sDef.turretAuto ? ' 自锁' : '')) : '无副炮';
+      var sStat = '火力 ×' + sDef.fireMul.toFixed(1) + '  ·  伤害 ' + effDmg + '  ·  ' + sTStat;
       if (this._upgradeCard(ctx, xs[1], top, {
         w: cardW, title: '船舰 Lv' + this.shipLevel + ' ' + sDef.name, stat: sStat, color: sDef.glow,
         maxed: sMaxed, cost: sCost, canBuy: sCanBuy, maxedLabel: '已满级'

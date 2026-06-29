@@ -152,6 +152,23 @@ async function main() {
     JSON.stringify({eb:Game.enemyBullets.length, aliens:Game.aliens.length});
   `, true).then(s => log('t9/t10 弹幕 120 帧: ' + s));
 
+  // 6) v0.10 副炮:各舰级副炮座渲染 + 自动开火生成副炮弹(校验新渲染/逻辑管线不抛)
+  await evalJs(ws, `
+    var G=window.G, R=G.Render, C=G.Config, Game=G.Game;
+    var c=document.getElementById('stage'); var ctx=c.getContext('2d');
+    Game.startGame();
+    var cnt=0;
+    for (var lv=1; lv<=5; lv++){
+      Game.shipLevel=lv; Game._syncShipVisual();
+      Game.ship.update(0.02); R.ship(ctx,Game.ship);      // 副炮座(_shipTurrets,Lv2-5)
+      Game.bullets.length=0; Game._fireTurrets(1.0);       // 自动开火(Lv1 0,Lv2+ 生成)
+      Game.bullets.forEach(function(b){ R.bullet(ctx,b); });// 副炮弹渲染(skill=null 路径)
+      if(lv>=2) cnt += Game.bullets.length;
+    }
+    Game.shipLevel=1; Game._syncShipVisual();
+    '副炮渲染完成,副炮弹数='+cnt;
+  `).then(s => log('v0.10 副炮渲染: ' + s));
+
   await new Promise(r=>setTimeout(r,300));
   const errs = await evalJs(ws, 'JSON.stringify(window.__errs)');
   const errArr = JSON.parse(errs);

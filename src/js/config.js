@@ -40,12 +40,16 @@
 
     // 船舰(v0.2 实装:fireMul 作为「乘区」放大武器单发伤害;glow 为飞船等级光晕色)
     // v0.5 经济调参:成本全线↓约 75%,前期可快速升 1–2 级建立成长感。
+    // v0.10 实装副炮(GDD §4.3 炮位阶梯,此前只 fireMul 未做炮位):
+    //   turrets   = 副炮门数(0/1/1/2/2);turretAuto = 自动锁敌(true=Lv3+ 全向,false=Lv2 固定朝上)
+    //   turretDmg = 副炮单发独立伤害(不乘 fireMul —— 乘区已在主武体现,副炮是舰载固有火力)
+    //   turretRate= 副炮射速(发/秒,独立于武器射速)。自动锁敌用 Ship._findTarget(v0.7 保留未用,现启用)。
     SHIPS: {
-      1: { name: '侦察艇',   fireMul: 1.0, cost: 0,     glow: '#5ad1ff' },
-      2: { name: '驱逐舰',   fireMul: 1.2, cost: 350,   glow: '#5ad1ff' },
-      3: { name: '巡洋舰',   fireMul: 1.5, cost: 2600,  glow: '#7df0c0' },
-      4: { name: '战列舰',   fireMul: 2.0, cost: 11000, glow: '#ffd166' },
-      5: { name: '旗舰',     fireMul: 3.0, cost: 48000, glow: '#ff5d8f' },
+      1: { name: '侦察艇', fireMul: 1.0, cost: 0,     glow: '#5ad1ff', turrets: 0 },
+      2: { name: '驱逐舰', fireMul: 1.2, cost: 350,   glow: '#5ad1ff', turrets: 1, turretAuto: false, turretDmg: 1, turretRate: 2.0 },  // 双炮位:1门固定朝上
+      3: { name: '巡洋舰', fireMul: 1.5, cost: 2600,  glow: '#7df0c0', turrets: 1, turretAuto: true,  turretDmg: 2, turretRate: 2.5 },  // +自动副炮:1门锁敌
+      4: { name: '战列舰', fireMul: 2.0, cost: 11000, glow: '#ffd166', turrets: 2, turretAuto: true,  turretDmg: 2, turretRate: 3.0 },  // 三炮位:2门锁敌
+      5: { name: '旗舰',   fireMul: 3.0, cost: 48000, glow: '#ff5d8f', turrets: 2, turretAuto: true,  turretDmg: 3, turretRate: 3.6 },  // 全向射击:2门锁敌+强化
     },
     MAX_SHIP_LEVEL: 5,
     // 防御(v0.2.2 实装:充能护盾 + 特效,忠实 GDD §4.4)
@@ -152,6 +156,16 @@
       color: '#ff5470',    // 默认弹色(各怪 fire 可经 def.color 染色)
       maxOnScreen: 90,     // 同屏敌弹上限(防弹幕过密拖性能)
       trail: 6,            // 拖尾点数
+    },
+
+    // 副炮弹(v0.10):船舰自带副炮发射的子弹。独立弹速/色/半径,不贯穿(pierce=0)。
+    //   复用 Bullet 实体(skill=null + 覆盖 color/radius/pierce),渲染/碰撞链路通用、零特判。
+    //   伤害由 SHIPS[shipLevel].turretDmg 决定(不乘 fireMul);纯物理不吃技能。
+    TURRET: {
+      speed: 720,       // 副炮弹速(独立于武器)
+      color: '#9bff7a', // 副炮弹色(亮绿,与主武弹道区分)
+      radius: 3.6,     // 副炮弹半径(细于主武 5)
+      pierce: 0,       // 不贯穿(命中即销毁)
     },
 
     // 技能胶囊(v0.5):场上定时掉落,飞船子弹击中即拾取;持久生效直到拾取下一个。
