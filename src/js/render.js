@@ -12,6 +12,10 @@
   var stars = null, bgCanvas = null, bgImage = null;
   var glowCache = {};
 
+  // v0.10.2:飞船贴图朝向归一(让船头朝上)。AI 生图机头朝向不定,逐张校准。
+  //   先全部归零看原图朝向(质心居中+竖框,绕中心旋转即可),按用户实机反馈定每张角度。
+  var SHIP_TEX_ROT = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
   // —— 颜色工具 ——
   function hexToRgb(hex) {
     // 容错:lighten()/darken() 返回 'rgb(r,g,b)' 字符串。若直接喂给 drawGlow/glow
@@ -215,6 +219,39 @@
       var lvl = Math.min(ship.level || 1, 5);
       var r = ship.radius, flash = ship.hitFlash > 0;
       var glow = G.Config.SHIPS[lvl].glow;     // 等级光晕色
+
+      // v0.10.1:优先用 Kenney 贴图(CC0,渐进增强)。就绪则画贴图 + 引擎尾焰光晕;
+      //   未就绪/缺失自动退回下面的程序化模块化组装,缺图不影响运行。
+      //   每级一张 ship{lvl}.png = 升级外观变化;贴图按"船头朝上"归一(竖图直接,横图旋转 -90°)。
+      var tex = G.Assets && G.Assets.get('ship' + lvl);
+      if (tex) {
+        ctx.save();
+        ctx.translate(ship.x, ship.y);
+        // 纵向射击飞船朝上(-π/2);贴图坐标系内再叠加"归一朝向"旋转
+        ctx.rotate(ship.aimAngle + Math.PI / 2 + (SHIP_TEX_ROT[lvl] || 0));
+        // 等级光晕(衬底,柔和)+ 贴图本体
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, glow, 0, 0, r * 1.7, 0.2);
+        ctx.globalCompositeOperation = 'source-over';
+        var visScale = 1 + (lvl - 1) * 0.06;   // 逐级放大(与程序化一致,碰撞半径不变)
+        var size = r * 2.5 * visScale;
+        ctx.drawImage(tex, -size / 2, -size / 2, size, size);
+        if (flash) {   // 受击增亮
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.55;
+          ctx.drawImage(tex, -size / 2, -size / 2, size, size);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        }
+        // 引擎尾焰光晕(贴图下方,衬出推进感)
+        ctx.globalCompositeOperation = 'lighter';
+        var fl = 0.7 + 0.3 * Math.sin(Date.now() / 55);
+        drawGlow(ctx, '#2a6bff', 0, r * 0.7 * visScale, r * (0.5 + lvl * 0.06) * fl, 0.5);
+        drawGlow(ctx, '#eaf6ff', 0, r * 0.62 * visScale, r * 0.2 * fl, 0.9);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.restore();
+        return;
+      }
 
       ctx.save();
       ctx.translate(ship.x, ship.y);
