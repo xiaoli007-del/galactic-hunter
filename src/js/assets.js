@@ -17,10 +17,14 @@
     _state: {},   // key -> 'loading' | 'ok' | 'fail'
     SPRITE_DIR: 'src/assets/sprites/',
     // 需要的贴图(AI 生图 / strip-bg 抠图后落 sprites/):
-    //   飞船 Lv1-5(每级一张,升级外观进化)+ 5 个敌人原型(按功能映射现有 23 怪)
-    //   未就绪→null→render 退回程序化绘制,缺图不影响运行
+    //   飞船 Lv1-5(每级一张,升级外观进化)+ 23 种怪各一独立贴图(t1-t23,按 a.type 取)
+    //   未就绪→null→render 退回程序化绘制,缺图不影响运行(可分批接入)
     LIST: ['ship1', 'ship2', 'ship3', 'ship4', 'ship5',
-           'enemy-scout', 'enemy-shield', 'enemy-turret', 'enemy-elite', 'enemy-heavy'],
+           't1','t2','t3','t4','t5','t6','t7','t8','t9','t10',
+           't11','t12','t13','t14','t15','t16','t17','t18','t19','t20',
+           'bg',
+           'bullet1','bullet2','bullet3','bullet4','bullet5',
+           'bullet-ice','bullet-fire','bullet-bolt','bullet-laser'],
 
     init: function () {
       var self = this;

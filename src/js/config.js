@@ -73,11 +73,19 @@
     //   behavior = 特殊行为(v0.3):t4 幽灵闪现回避、t5 精英螺旋冲刺
     ALIENS: {
       t1: { name: '爬虫',   tier: 1, hp: 1,   score: 10,   coin: 4,   radius: 18, speed: 95,  spawnWeight: 40, color: '#8aff80', behavior: null },
-      t2: { name: '飞翼',   tier: 2, hp: 3,   score: 30,   coin: 9,   radius: 24, speed: 70,  spawnWeight: 25, color: '#5ad1ff', behavior: null },
-      t3: { name: '蟹甲',   tier: 3, hp: 8,   score: 80,   coin: 15,  radius: 34, speed: 48,  spawnWeight: 18, color: '#ffd166', behavior: null },
-      t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff', behavior: 'blink' },   // 受击概率闪现回避
+      t2: { name: '飞翼',   tier: 2, hp: 3,   score: 30,   coin: 9,   radius: 24, speed: 70,  spawnWeight: 25, color: '#5ad1ff', behavior: null,
+            fire: { pattern: 'aimed', every: 3.2, count: 1, speed: 300, telegraph: 0.5 } },   // 朝飞船瞄一发
+      t3: { name: '蟹甲',   tier: 3, hp: 8,   score: 80,   coin: 15,  radius: 34, speed: 48,  spawnWeight: 18, color: '#ffd166', behavior: null,
+            fire: { pattern: 'aimed', every: 3.0, count: 2, spread: 0.18, speed: 280, telegraph: 0.6 } },  // 双发小扇形
+      t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff', behavior: 'blink',   // 受击概率闪现回避
+            fire: { pattern: 'spiral', every: 0.7, count: 2, spiralStep: 0.5, speed: 240, telegraph: 0 } },  // 闪现时双臂慢螺旋
       t5: { name: '精英',   tier: 5, hp: 20,  score: 300,  coin: 60,  radius: 40, speed: 60,  spawnWeight: 5,  color: '#ff8a3d', behavior: 'spiral' },    // 螺旋移动 + 周期冲刺
-      t6: { name: 'Boss',   tier: 6, hp: 100, score: 1500, coin: 300, radius: 70, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null, boss: true },   // 召唤 + 突进(无弹幕)
+      t6: { name: 'Boss',   tier: 6, hp: 200, score: 1500, coin: 300, radius: 115, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null, boss: true,   // 固定位 + 三阶段弹幕(v0.10.5 加血加大)
+            fire: { stages: {
+              1: { pattern: 'aimed',  every: 2.2, count: 3, spread: 0.22, speed: 300, telegraph: 0.5 },
+              2: { pattern: 'spiral', every: 0.22, count: 3, spiralStep: 0.4, speed: 270, telegraph: 0 },
+              3: { pattern: 'ring',   every: 2.5, count: 16, speed: 260, telegraph: 0 },
+            } } },
       // v0.8 新内容(雷电风):精英与 Boss 专有特殊机制/敌弹,与 t1–t6 本体冲撞区分。
       //   boss = 是否 Boss(独立于 tier;原 t6 用 tier===6 判定,现统一为 def.boss 标志)。
       //   fire = 敌弹发射配置(仅新内容;t1–t6 维持纯本体冲撞不发弹):
@@ -88,38 +96,41 @@
       t7: { name: '撕裂者', tier: 7, hp: 28,  score: 400,  coin: 70,  radius: 30, speed: 64,  spawnWeight: 3,  color: '#ff4d6d', behavior: 'dash' },      // 预警→锁定方向直线突进(可读可躲)
       t8: { name: '守卫者', tier: 7, hp: 40,  score: 500,  coin: 90,  radius: 32, speed: 46,  spawnWeight: 3,  color: '#ff8c42', behavior: 'gunner',           // 周期朝飞船发射瞄准敌弹
             fire: { pattern: 'aimed', every: 2.6, count: 3, spread: 0.24, speed: 320, telegraph: 0.55 } },
-      t9: { name: '钢铁巨像', tier: 8, hp: 260, score: 4000, coin: 600, radius: 78, speed: 30, spawnWeight: 0, color: '#9fb4c8', behavior: null, boss: true,   // 中 Boss·三阶段弹幕(瞄准→螺旋→环形)
+      t9: { name: '钢铁巨像', tier: 8, hp: 500, score: 4000, coin: 600, radius: 135, speed: 30, spawnWeight: 0, color: '#9fb4c8', behavior: null, boss: true,   // 中 Boss·固定位三阶段弹幕(v0.10.5 加血加大)
             fire: { stages: {
               1: { pattern: 'aimed',  every: 1.8, count: 3, spread: 0.20, speed: 330, telegraph: 0.45 },
               2: { pattern: 'spiral', every: 0.16, count: 3, spiralStep: 0.34, speed: 280, telegraph: 0 },
               3: { pattern: 'ring',    every: 2.2, count: 18, speed: 250, telegraph: 0 },
             } } },
-      t10: { name: '虚空吞噬者', tier: 9, hp: 640, score: 12000, coin: 1500, radius: 92, speed: 26, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true,   // 终 Boss·三阶段密集弹幕 + 召唤
+      t10: { name: '虚空吞噬者', tier: 9, hp: 1200, score: 12000, coin: 1500, radius: 155, speed: 26, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true,   // 终 Boss·固定位三阶段密集弹幕 + 召唤(v0.10.5 加血加大)
             summonType: 't2', summonCount: 3,     // 阶段≥2 召唤飞翼(沿用 _bossSummon,override 全局 summonType/Count)
             fire: { stages: {
               1: { pattern: 'spiral', every: 0.13, count: 4, spiralStep: 0.28, speed: 300, telegraph: 0 },   // 四臂螺旋
               2: { pattern: 'ring',   every: 1.9, count: 22, speed: 280, telegraph: 0 },                       // 密集环
               3: { pattern: 'spiral', every: 0.10, count: 6, spiralStep: 0.24, speed: 330, telegraph: 0 },   // 六臂急旋
             } } },
-      // ===== 扩展怪物(机械装甲科幻·23种体系)=====
-      //   普通 t11–t21(11种):tier 1–4,纯下压/简单行为,spawnWeight 中高,差异化靠造型。
-      //   精英 t22/t23(2种):tier 5–6,特殊行为(t22 闪现 blink / t23 环射 gunner+ring),spawnWeight 低。
-      //   → 合计:普通(t1–t4 + t11–t21 = 15)/ 精英(t5,t7,t8,t22,t23 = 5)/ Boss(t6,t9,t10 = 3)。
-      t11: { name: '装甲水母',   tier: 2, hp: 2,  score: 20,  coin: 6,   radius: 22, speed: 78, spawnWeight: 22, color: '#4dd0e1', behavior: null },
-      t12: { name: '双足机甲',   tier: 3, hp: 6,  score: 70,  coin: 14,  radius: 28, speed: 52, spawnWeight: 16, color: '#8d6e63', behavior: null },
-      t13: { name: '飞镖无人机', tier: 2, hp: 3,  score: 35,  coin: 8,   radius: 20, speed: 88, spawnWeight: 20, color: '#b39ddb', behavior: null },
-      t14: { name: '装甲海星',   tier: 3, hp: 7,  score: 85,  coin: 16,  radius: 30, speed: 50, spawnWeight: 14, color: '#ffb74d', behavior: null },
-      t15: { name: '钻头钻探者', tier: 4, hp: 10, score: 110, coin: 20,  radius: 26, speed: 64, spawnWeight: 10, color: '#90a4ae', behavior: null },
-      t16: { name: '晶簇机械体', tier: 3, hp: 8,  score: 90,  coin: 17,  radius: 28, speed: 56, spawnWeight: 13, color: '#4db6ac', behavior: null },
-      t17: { name: '蜂巢炮台',   tier: 4, hp: 12, score: 130, coin: 24,  radius: 32, speed: 46, spawnWeight: 9,  color: '#fff176', behavior: null },
-      t18: { name: '回旋镖翼',   tier: 2, hp: 4,  score: 40,  coin: 9,   radius: 24, speed: 84, spawnWeight: 18, color: '#7986cb', behavior: null },
-      t19: { name: '装甲鳐',     tier: 3, hp: 9,  score: 95,  coin: 18,  radius: 30, speed: 54, spawnWeight: 12, color: '#a1887f', behavior: null },
-      t20: { name: '齿轮巨虫',   tier: 4, hp: 11, score: 120, coin: 22,  radius: 30, speed: 48, spawnWeight: 9,  color: '#cfd8dc', behavior: null },
-      t21: { name: '三联拦截机', tier: 3, hp: 6,  score: 75,  coin: 15,  radius: 26, speed: 60, spawnWeight: 15, color: '#81d4fa', behavior: null },
-      //   精英:t22 闪现幽影王(blink 回避,复用 t4 行为,造型更复杂)、t23 环射要塞(gunner + ring 全圆弹幕 + 预警)
-      t22: { name: '闪现幽影王', tier: 5, hp: 26, score: 380, coin: 75,  radius: 34, speed: 72, spawnWeight: 4,  color: '#ba68c8', behavior: 'blink' },
-      t23: { name: '环射要塞',   tier: 6, hp: 48, score: 600, coin: 110, radius: 38, speed: 40, spawnWeight: 3,  color: '#ff7043', behavior: 'gunner',
-             fire: { pattern: 'ring', every: 2.4, count: 14, speed: 300, telegraph: 0.5 } },
+      // v0.10.3:扩展怪(AI 贴图已生成接入)。t11-t20 已接入;t21-t23 待生图后补。
+      //   全 AI 贴图、画风与 t1-t10 统一;发弹配置沿用分级(小怪 aimed/精英 spiral+ring)。
+      t11: { name: '装甲水母',   tier: 2, hp: 2,  score: 20,  coin: 6,   radius: 22, speed: 78, spawnWeight: 22, color: '#4dd0e1', behavior: null,
+             fire: { pattern: 'aimed', every: 3.5, count: 1, speed: 280, telegraph: 0.5 } },
+      t12: { name: '双足机甲',   tier: 3, hp: 6,  score: 70,  coin: 14,  radius: 28, speed: 52, spawnWeight: 16, color: '#8d6e63', behavior: null,
+             fire: { pattern: 'aimed', every: 2.8, count: 2, spread: 0.2, speed: 290, telegraph: 0.55 } },
+      t13: { name: '飞镖无人机', tier: 2, hp: 3,  score: 35,  coin: 8,   radius: 20, speed: 88, spawnWeight: 20, color: '#b39ddb', behavior: null,
+             fire: { pattern: 'aimed', every: 2.5, count: 1, speed: 340, telegraph: 0.4 } },
+      t14: { name: '装甲海星',   tier: 3, hp: 7,  score: 85,  coin: 16,  radius: 30, speed: 50, spawnWeight: 14, color: '#ffb74d', behavior: null,
+             fire: { pattern: 'ring', every: 3.5, count: 8, speed: 240, telegraph: 0 } },
+      t15: { name: '钻头钻探者', tier: 4, hp: 10, score: 110, coin: 20,  radius: 26, speed: 64, spawnWeight: 10, color: '#90a4ae', behavior: null,
+             fire: { pattern: 'aimed', every: 2.6, count: 1, speed: 320, telegraph: 0.45 } },
+      t16: { name: '晶簇机械体', tier: 3, hp: 8,  score: 90,  coin: 17,  radius: 28, speed: 56, spawnWeight: 13, color: '#4db6ac', behavior: null,
+             fire: { pattern: 'spiral', every: 0.5, count: 2, spiralStep: 0.45, speed: 230, telegraph: 0 } },
+      t17: { name: '蜂巢炮台',   tier: 4, hp: 12, score: 130, coin: 24,  radius: 32, speed: 46, spawnWeight: 9,  color: '#fff176', behavior: null,
+             fire: { pattern: 'ring', every: 2.8, count: 12, speed: 260, telegraph: 0.4 } },
+      t18: { name: '回旋镖翼',   tier: 2, hp: 4,  score: 40,  coin: 9,   radius: 24, speed: 84, spawnWeight: 18, color: '#7986cb', behavior: null,
+             fire: { pattern: 'aimed', every: 3.0, count: 1, speed: 300, telegraph: 0.5 } },
+      t19: { name: '装甲鳐',     tier: 3, hp: 9,  score: 95,  coin: 18,  radius: 30, speed: 54, spawnWeight: 12, color: '#a1887f', behavior: null,
+             fire: { pattern: 'aimed', every: 2.7, count: 2, spread: 0.16, speed: 285, telegraph: 0.5 } },
+      t20: { name: '齿轮巨虫',   tier: 4, hp: 11, score: 120, coin: 22,  radius: 30, speed: 48, spawnWeight: 9,  color: '#cfd8dc', behavior: null,
+             fire: { pattern: 'spiral', every: 0.35, count: 3, spiralStep: 0.38, speed: 250, telegraph: 0 } },
     },
     // 特殊行为数值(v0.3)
     BEHAVIOR: {
@@ -154,7 +165,7 @@
       radius: 7,            // 碰撞/渲染半径
       damage: 1,           // 单发伤害(1 = 一次护盾格 / 1 hp)
       color: '#ff5470',    // 默认弹色(各怪 fire 可经 def.color 染色)
-      maxOnScreen: 90,     // 同屏敌弹上限(防弹幕过密拖性能)
+      maxOnScreen: 140,    // 同屏敌弹上限(v0.10.3:小怪全员发弹后调高,防频繁触顶丢弹)
       trail: 6,            // 拖尾点数
     },
 
@@ -211,13 +222,14 @@
     BOSS: {
       stage2HpRatio: 0.66,   // hp ≤ 66% 进入阶段 2(狂暴)
       stage3HpRatio: 0.33,   // hp ≤ 33% 进入阶段 3(暴怒)
-      speedMul:  { 1: 1.0, 2: 1.4, 3: 1.9 },   // 各阶段移速倍率
+      speedMul:  { 1: 1.0, 2: 1.4, 3: 1.9 },   // 各阶段移速倍率(v0.10.5:Boss 固定位不再用,保留)
       summonEvery: { 2: 3.5, 3: 2.2 },          // 召唤间隔(秒);阶段 1 不召唤
       summonType: 't2',                          // 召唤的小怪
       summonCount: 2,                            // 每次召唤数量
-      dashEvery: 2.8,                            // 阶段 3 冲刺间隔(秒)
-      dashSpeedMul: 4.5,                         // 冲刺速度倍率
-      dashDuration: 0.6,                         // 冲刺持续(秒)
+      dashEvery: 2.8,                            // 阶段 3 冲刺间隔(v0.10.5:Boss 不再冲刺,保留)
+      dashSpeedMul: 4.5,                         // 冲刺速度倍率(保留)
+      dashDuration: 0.6,                         // 冲刺持续(保留)
+      bossY: 320,                                // v0.10.5:Boss 固定锚点 Y(屏幕上方正中,压迫感位置)
     },
 
     // 起始与持久化

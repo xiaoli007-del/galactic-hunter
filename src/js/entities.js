@@ -224,7 +224,19 @@
         this.bossStage = newStage;
         if (G.Game) G.Game._onBossStage(this, newStage);
       }
-      speed *= B.speedMul[this.bossStage] || 1;
+      // v0.10.5:Boss 固定停在屏幕上方正中,不移动(只发弹 + 召唤 + 受击)。
+      //   缓动吸附到固定锚点(WIDTH/2, 上方 bossY),到位后保持;阶段切换时轻微震颤强化压迫感。
+      var anchorX = G.Config.WIDTH / 2;
+      var anchorY = G.Config.BOSS.bossY;
+      this.x += (anchorX - this.x) * Math.min(1, dt * 3);
+      this.y += (anchorY - this.y) * Math.min(1, dt * 3);
+      // 阶段≥2 震颤(压迫感:小幅随机抖动,模拟能量爆发)
+      if (this.bossStage >= 2) {
+        var tremor = (this.bossStage >= 3 ? 4 : 2);
+        this.x += (Math.random() - 0.5) * tremor;
+        this.y += (Math.random() - 0.5) * tremor;
+      }
+      this.angle = Math.PI;   // 朝下(正面对玩家);贴图机头朝下,angle=π 让造型朝下
       // 召唤小怪(阶段 ≥ 2)
       if (this.bossStage >= 2) {
         this.summonTimer -= dt;
@@ -233,31 +245,9 @@
           if (G.Game) G.Game._bossSummon(this);
         }
       }
-      // 阶段 3 冲刺:朝飞船方向瞬时高速位移
-      if (this.bossStage >= 3) {
-        this.dashTimer -= dt;
-        if (this.dashing <= 0 && this.dashTimer <= 0) {
-          this.dashing = B.dashDuration;
-          this.dashTimer = B.dashEvery;
-          this._dashDx = 0; this._dashDy = 1;   // 默认向下,Game 可在召唤时校正方向
-          if (G.Game && G.Game.ship) {
-            var sdx = G.Game.ship.x - this.x, sdy = G.Game.ship.y - this.y;
-            var sl = Math.hypot(sdx, sdy) || 1;
-            this._dashDx = sdx / sl; this._dashDy = sdy / sl;
-          }
-        }
-      }
-      if (this.dashing > 0) {
-        // v0.8:Boss 突进中仍持续开火(t9/t10 弹幕与突进并行,不因位移漏发弹)。
-        //   _updateFire 在此调用,使 Boss 在冲刺 return 前完成发射;非发弹 Boss(t6 fire=null)为 no-op。
-        this._updateFire(dt);
-        this.x += this._dashDx * speed * B.dashSpeedMul * dt;
-        this.y += this._dashDy * speed * B.dashSpeedMul * dt;
-        this.dashing -= dt;
-        this.angle = Math.atan2(this._dashDy, this._dashDx) - Math.PI / 2;
-        if (this.y > G.Config.HEIGHT + 80) this.escaped = true;
-        return;
-      }
+      // Boss 固定位持续开火(_updateFire 已含 fire null 的 no-op 判断)
+      this._updateFire(dt);
+      return;   // Boss 不走下面的默认移动/dash
     }
 
     // v0.8 敌弹发射(t8 守卫者,及非冲刺态的 t9/t10 Boss):放在 Boss 块之后,bossStage 已更新。

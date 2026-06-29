@@ -241,12 +241,12 @@ Game.startGame();
 var boss = new G.Entities.Alien('t6', G.Config.WIDTH / 2, 200);
 assert(boss.isBoss === true, 't6 标记为 Boss');
 assert(boss.bossStage === 1, '初始阶段 1');
-// 阶段 2:hp ≤ 66%(=66)
-boss.takeDamage(34);                      // 100 → 66, ratio 0.66, 进入阶段 2
+// 阶段 2:hp ≤ 66%(按比例打血,适配 hp 调整)
+boss.takeDamage(Math.ceil(boss.maxHp * 0.34));   // hp → 66%, 进入阶段 2
 boss.update(0.02);                        // 触发阶段切换检测
 assert(boss.bossStage === 2, 'hp≤66% 进入狂暴阶段 2 (hp ' + boss.hp + ')');
-// 阶段 3:hp ≤ 33%(=33)
-boss.takeDamage(33);                      // 66 → 33, ratio 0.33, 进入阶段 3
+// 阶段 3:hp ≤ 33%
+boss.takeDamage(Math.ceil(boss.maxHp * 0.33));   // 再打到 33%, 进入阶段 3
 boss.update(0.02);
 assert(boss.bossStage === 3, 'hp≤33% 进入暴怒阶段 3 (hp ' + boss.hp + ')');
 // 召唤:阶段 3 summonEvery 2.2s,推进应产生小怪
@@ -496,6 +496,7 @@ assert(Game.powerups.length === 0, '开局无胶囊');
 assert(Game.powerupTimer === G.Config.POWERUP.dropEvery, '首个胶囊倒计时初始化 (' + Game.powerupTimer + ')');
 // 推进越过掉落间隔,应生成胶囊(指针按下让飞船别乱飞)
 P.pointer.x = 360; P.pointer.y = 1100; P.pointer.down = true;
+Game.ship.invuln = 999;   // v0.10.3:移动改快后怪更易撞死飞船,测试期间无敌避免干扰胶囊判定
 pump(G.Config.POWERUP.dropEvery * 1000 + 200);
 assert(Game.powerups.length >= 1, '定时掉落胶囊 (生成 ' + Game.powerups.length + ' 个)');
 assert(Game.activeSkill === null, '胶囊未拾取前技能仍为空');

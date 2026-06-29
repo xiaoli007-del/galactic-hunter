@@ -43,6 +43,7 @@
     _clickConsumed: false,
     _bossIdx: 0,              // v0.8:Boss 轮换序号(t6→t9→t10→t6…);startGame 重置为 0(首 Boss 恒 t6)
     turretTimer: 0,           // v0.10:副炮自动开火计时(按 SHIPS[shipLevel].turretRate 节奏连发)
+    bossAlert: 0,             // v0.10.4:Boss 出现警报剩余秒(>0 时渲染 EVA 式红条警报)
 
     init: function () {
       this.loadSave();
@@ -179,10 +180,45 @@
       ctx.restore();
     },
 
+    // v0.10.4:Boss 出现警报(EVA 式)—— 上下两条红色横条 + 警告字 + 节奏闪烁。
+    //   bossAlert>0 时每帧画;条带做横向扫描动画 + 整体明暗呼吸(8Hz 警报节奏)。
+    drawBossAlert: function (ctx) {
+      var W = C.WIDTH, H = C.HEIGHT;
+      var t = this.time;
+      var barH = 54;
+      var pulse = 0.5 + 0.5 * Math.sin(t * 16);   // 8Hz 闪烁(警报节奏)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // 上下红条(半透明红 + 扫描亮线)
+      var barA = 0.55 + pulse * 0.35;
+      var grad = ctx.createLinearGradient(0, 0, W, 0);
+      grad.addColorStop(0, 'rgba(255,30,40,0)');
+      grad.addColorStop(0.5, 'rgba(255,40,50,' + barA + ')');
+      grad.addColorStop(1, 'rgba(255,30,40,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, barH);                 // 顶部
+      ctx.fillRect(0, H - barH, W, barH);          // 底部
+      // 横向扫描亮线(来回移动,赛博警报感)
+      var scanX = (Math.sin(t * 2.5) * 0.5 + 0.5) * W;
+      ctx.fillStyle = 'rgba(255,200,200,' + (0.4 + pulse * 0.4) + ')';
+      ctx.fillRect(scanX - 3, 0, 6, barH);
+      ctx.fillRect(W - scanX - 3, H - barH, 6, barH);
+      ctx.globalCompositeOperation = 'source-over';
+      // 警告文字(顶条内)
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,' + (180 + pulse * 60) + ',' + (180 + pulse * 60) + ',' + (0.8 + pulse * 0.2) + ')';
+      ctx.shadowColor = '#ff2030'; ctx.shadowBlur = 16;
+      ctx.font = 'bold 26px Arial';
+      ctx.fillText('⚠  WARNING  ⚠  BOSS 接近  ⚠', W / 2, barH / 2 + 9);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    },
+
     // ================= 主循环 =================
     update: function (dt) {
       this.time += dt;
       if (this.screenFlash > 0) this.screenFlash -= dt * 2;
+      if (this.bossAlert > 0) this.bossAlert -= dt;   // v0.10.4:Boss 警报倒计时
       // FPS 统计(0.5s 滑窗)
       this._fpsFr = (this._fpsFr || 0) + 1;
       this._fpsTm = (this._fpsTm || 0) + dt;
@@ -206,6 +242,17 @@
           this.screenFlash = 0.2;
           break;
         }
+      }
+      // 调试:按 B 键立即召唤下一个 Boss(检视放大后的 Boss + EVA 警报用)
+      if (P.isKeyJustPressed('b')) {
+        var rot2 = C.WAVE.bossRotation;
+        var bt = rot2[this._bossIdx % rot2.length];
+        this._bossIdx++;
+        this.spawnAlien(0, bt);
+        this.bossAlert = 2.2;
+        var bDef2 = C.ALIENS[bt];
+        this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ ' + bDef2.name + ' 出现', bDef2.color, 38));
+        Snd && Snd.play('boss');
       }
       if (this.state !== STATE.PLAYING) return;
 
@@ -326,6 +373,7 @@
         this.spawnAlien(tier, bossType);
         this._bossSpawned = true;
         var bDef = C.ALIENS[bossType];
+        this.bossAlert = 2.2;   // v0.10.4:EVA 式红色警报持续 2.2s(红条闪烁 + 警告字)
         this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ ' + bDef.name + ' 出现', bDef.color, 38));
         Snd && Snd.play('boss');
       }
@@ -359,7 +407,7 @@
       });
       var type = forceType || E.weighted(keys, weights);
       var def = C.ALIENS[type];
-      var x = E.rand(60, C.WIDTH - 60);
+      var x = def.boss ? C.WIDTH / 2 : E.rand(60, C.WIDTH - 60);   // v0.10.5:Boss 正中入场
       var y = -def.radius - 10;
       this.aliens.push(new Ent.Alien(type, x, y));
     },
@@ -711,7 +759,10 @@
       if (this.state === STATE.PLAYING || this.state === STATE.GAMEOVER || this.state === STATE.PAUSED) {
         this.drawWorld(ctx);
       }
-      if (this.state === STATE.PLAYING) this.drawHUD(ctx);
+      if (this.state === STATE.PLAYING) {
+        this.drawHUD(ctx);
+        if (this.bossAlert > 0) this.drawBossAlert(ctx);   // v0.10.4:EVA 式红色警报
+      }
       if (this.state === STATE.PAUSED) this.drawPaused(ctx);
       if (this.state === STATE.MENU) this.drawMenu(ctx);
       if (this.state === STATE.GAMEOVER) this.drawGameOver(ctx);

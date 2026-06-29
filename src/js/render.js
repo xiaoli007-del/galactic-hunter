@@ -16,6 +16,24 @@
   //   先全部归零看原图朝向(质心居中+竖框,绕中心旋转即可),按用户实机反馈定每张角度。
   var SHIP_TEX_ROT = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
+  // v0.10.5:子弹贴图预缩存 —— 子弹高频大量,每发 drawImage 原图(1024px)会掉帧。
+  //   首次取用时把原图缩成 64px 离屏 canvas 缓存,运行时只画小图。缺失返回 null(退回矢量)。
+  var _bulletCache = {};
+  function getBulletTex(key) {
+    if (_bulletCache[key]) return _bulletCache[key];
+    if (typeof Image === 'undefined' || !G.Assets) return null;   // node smoke 环境
+    var img = G.Assets.get(key);
+    if (!img) return null;
+    var SZ = 64;
+    var c = document.createElement('canvas'); c.width = SZ; c.height = SZ;
+    var cx = c.getContext('2d');
+    var s = SZ / Math.max(img.naturalWidth, img.naturalHeight);
+    var dw = img.naturalWidth * s, dh = img.naturalHeight * s;
+    cx.drawImage(img, (SZ - dw) / 2, (SZ - dh) / 2, dw, dh);
+    _bulletCache[key] = c;
+    return c;
+  }
+
   // —— 颜色工具 ——
   function hexToRgb(hex) {
     // 容错:lighten()/darken() 返回 'rgb(r,g,b)' 字符串。若直接喂给 drawGlow/glow
@@ -196,11 +214,26 @@
 
     background: function (ctx, t) {
       ensureStars();
-      if (!bgCanvas) buildBackground();
       var cfg = G.Config, W = cfg.WIDTH, H = cfg.HEIGHT;
-      ctx.drawImage(bgCanvas, 0, 0);
 
-      // 星点闪烁
+      // v0.10.3:优先用 AI 生图背景(bg.png)。等比缩放铺满竖屏(以宽度为准、高度裁剪),
+      //   缺失退回程序化 buildBackground。星点闪烁仍叠加在背景之上(动态层次)。
+      var bgTex = G.Assets && G.Assets.get('bg');
+      if (bgTex) {
+        var iw = bgTex.naturalWidth, ih = bgTex.naturalHeight;
+        var scale = W / iw;             // 以宽度铺满,高度可能超出(裁掉)
+        var dw = W, dh = ih * scale;
+        var oy = (H - dh) / 2;          // 垂直居中(上下各裁一半)
+        // 若高度不足则以高度为准、宽度裁剪(保证铺满不留白)
+        if (dh < H) { scale = H / ih; dw = iw * scale; dh = H; oy = 0; }
+        var ox = (W - dw) / 2;
+        ctx.drawImage(bgTex, ox, oy, dw, dh);
+      } else {
+        if (!bgCanvas) buildBackground();
+        ctx.drawImage(bgCanvas, 0, 0);
+      }
+
+      // 星点闪烁(叠加在背景上,动态层次;背景图本身也有星,这层增加闪烁感)
       for (var s = 0; s < stars.length; s++) {
         var st = stars[s];
         var a = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * st.tws + st.tw));
@@ -235,11 +268,16 @@
         ctx.globalCompositeOperation = 'source-over';
         var visScale = 1 + (lvl - 1) * 0.06;   // 逐级放大(与程序化一致,碰撞半径不变)
         var size = r * 2.5 * visScale;
+        // v0.10.3:色彩强化 — AI 生图偏淡/透明,提饱和+对比让金属装甲更鲜亮厚重(filter 仅作用于贴图)
+        ctx.filter = 'saturate(1.5) contrast(1.18) brightness(1.05)';
         ctx.drawImage(tex, -size / 2, -size / 2, size, size);
+        ctx.filter = 'none';
         if (flash) {   // 受击增亮
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = 0.55;
+          ctx.filter = 'brightness(1.4)';
           ctx.drawImage(tex, -size / 2, -size / 2, size, size);
+          ctx.filter = 'none';
           ctx.globalCompositeOperation = 'source-over';
           ctx.globalAlpha = 1;
         }
@@ -483,6 +521,41 @@
       ctx.globalCompositeOperation = 'lighter';
       drawGlow(ctx, def.color, 0, 0, r * 1.9, 0.26);
       ctx.globalCompositeOperation = 'source-over';
+
+      // v0.10.3:优先用 AI 生图贴图(按 a.type 取 t1-t23.png;缺失退回下面程序化矢量)。
+      //   AI 生图炮口已朝下(敌从上方下压),不旋转直接画。
+      //   怪比飞船小,贴图按 def.radius 等比;受击闪白叠加。
+      var atex = G.Assets && G.Assets.get(a.type);
+      if (atex) {
+        var asize = r * 2.6;
+        ctx.save();
+        // v0.10.3:色彩强化 — 提饱和+对比,消除 AI 生图的淡/透明感,金属装甲更鲜亮
+        ctx.filter = 'saturate(1.55) contrast(1.2) brightness(1.05)';
+        ctx.drawImage(atex, -asize / 2, -asize / 2, asize, asize);
+        ctx.filter = 'none';
+        if (flash) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.55;
+          ctx.filter = 'brightness(1.4)';
+          ctx.drawImage(atex, -asize / 2, -asize / 2, asize, asize);
+          ctx.filter = 'none';
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+        }
+        ctx.restore();
+        // 弱点核 + 状态叠在贴图上(与程序化路径一致,统一视觉锚点)
+        if (!a.isBoss) {
+          var wp2 = 0.85 + 0.15 * Math.sin(Date.now() / 120);
+          var wsize2 = r * 0.18 * wp2 * (flash ? 1.5 : 1);
+          ctx.globalCompositeOperation = 'lighter';
+          drawGlow(ctx, '#ff5a2b', 0, 0, wsize2 * 2.2, 0.6);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.restore();
+        this._alienStatus(ctx, a, r);
+        if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
+        return;
+      }
 
       // 主体金属渐变(按 def.color 染色:高光→本色→暗部)+ 深色描边;受击全白
       var g = ctx.createLinearGradient(-r * 0.7, -r * 0.7, r * 0.7, r * 0.7);
@@ -1200,8 +1273,25 @@
         ctx.globalAlpha = 1;
       }
 
-      // 矢量弹头(发光能量胶囊):激光=粗贯穿柱,其余=椭圆能量核 + 白心
+      // v0.10.5:子弹贴图(AI 生图)。技能弹按 fx 取 bullet-{fx};普通弹按武器等级取 bullet{lvl}。
+      //   贴图弹头朝上(子弹往上飞),不旋转;大小按 b.radius + 武器等级缩放(高等级更大,匹配飞船等级感)。
+      //   预缩存小图(_bulletCache)避免每发 drawImage 大图掉帧;缺失退回下面矢量弹头。
       var br = b.radius;
+      var wlvl = b.weaponLevel || 1;
+      var bsizeScale = 1 + (wlvl - 1) * 0.08;          // 武器等级缩放(高等级子弹更大)
+      var bkey = fx ? ('bullet-' + fx) : ('bullet' + Math.min(wlvl, 5));
+      var btex = getBulletTex(bkey);                   // 预缩存的离屏小图(64px)
+      if (btex) {
+        var bs = br * 4.2 * bsizeScale;                 // 子弹显示尺寸(比半径放大,贴图才有细节)
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, b.color, b.x, b.y, bs * 0.5, 0.3);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(btex, b.x - bs / 2, b.y - bs / 2, bs, bs);
+        ctx.restore();
+        return;
+      }
+
+      // 矢量弹头(发光能量胶囊):激光=粗贯穿柱,其余=椭圆能量核 + 白心(贴图缺失时退回)
       if (fx === 'laser') {
         ctx.globalCompositeOperation = 'lighter';
         drawGlow(ctx, b.color, b.x, b.y, br * 3.4, 0.5);
