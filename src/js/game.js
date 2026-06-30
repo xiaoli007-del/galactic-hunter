@@ -219,15 +219,24 @@
       ctx.fillRect(scanX - 3, 0, 6, barH);
       ctx.fillRect(W - scanX - 3, H - barH, 6, barH);
       ctx.globalCompositeOperation = 'source-over';
-      // 警告文字:pending 阶段显示倒计时(Boss 还没来),否则"接近"
+      // v0.10.14:警告文字移到屏幕中央(原在顶条内不明显),大字 + 脉动 + 倒计时,压迫感。
       var secs = Math.ceil(this.bossAlert);
-      var msg = this._bossPending ? ('⚠  WARNING  ⚠  BOSS 逼近  ' + secs + ' S  ⚠') : '⚠  WARNING  ⚠  BOSS 接近  ⚠';
+      var msg = this._bossPending ? ('⚠  BOSS 逼近  ' + secs + ' S  ⚠') : '⚠  BOSS 接近  ⚠';
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255,' + (180 + pulse * 60) + ',' + (180 + pulse * 60) + ',' + (0.8 + pulse * 0.2) + ')';
-      ctx.shadowColor = '#ff2030'; ctx.shadowBlur = 16;
-      ctx.font = 'bold 26px Arial';
-      ctx.fillText(msg, W / 2, barH / 2 + 9);
+      ctx.textBaseline = 'middle';
+      // 中央半透明黑底衬(让红字在任意背景下都清晰)
+      ctx.fillStyle = 'rgba(0,0,0,' + (0.45 + pulse * 0.2) + ')';
+      ctx.fillRect(W / 2 - 230, H / 2 - 50, 460, 100);
+      // 红字 + 红描边 + 发光
+      ctx.font = 'bold 48px Arial';
+      ctx.strokeStyle = 'rgba(120,0,10,' + (0.8 + pulse * 0.2) + ')';
+      ctx.lineWidth = 6;
+      ctx.strokeText(msg, W / 2, H / 2);
+      ctx.fillStyle = 'rgba(255,' + (90 + pulse * 80) + ',' + (90 + pulse * 80) + ',' + (0.85 + pulse * 0.15) + ')';
+      ctx.shadowColor = '#ff2030'; ctx.shadowBlur = 24;
+      ctx.fillText(msg, W / 2, H / 2);
       ctx.shadowBlur = 0;
+      ctx.textBaseline = 'alphabetic';
       ctx.restore();
     },
 

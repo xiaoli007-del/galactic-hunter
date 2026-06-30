@@ -69,9 +69,10 @@
     return c;
   }
 
-  // v0.10.11:敌弹贴图预渲染缓存(按攻击方式选图)。弹头朝下,运行时旋转对齐飞行方向。
-  //   pattern→贴图:aimed→ebullet-aimed(直射)/ spiral→enemy-bullet(流弹)/ ring→ebullet-ring(能量球)/ boss→ebullet-boss。
-  //   缺失返回 null(退回矢量菱形)。染色:用 globalCompositeOperation='source-atop' 叠怪色染中性弹体。
+  // v0.10.11/v0.10.14:敌弹贴图预渲染缓存(按攻击方式选图)。弹头朝下,运行时旋转对齐飞行方向。
+  //   v0.10.14 修复"透明外壳":原图 1254px 主体仅占 ~16%,四周大量半透明羽化/光晕,
+  //     缩存后那圈半透明成了包裹弹丸的透明壳。预渲染时扫描像素裁剪到主体边界(去四周透明边),
+  //     缓存只含弹丸本体,画出来不再有外壳。
   var _eBulletTexCache = {};
   function getEBulletTex(key) {
     if (_eBulletTexCache[key]) return _eBulletTexCache[key];
@@ -79,11 +80,35 @@
     var img = G.Assets.get(key);
     if (!img) return null;
     var w = img.naturalWidth || 256, h = img.naturalHeight || 256;
+    // 先画到临时 canvas 读像素,找主体(alpha>40)的边界框
+    var tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+    var tx = tmp.getContext('2d');
+    tx.drawImage(img, 0, 0);
+    var data;
+    try { data = tx.getImageData(0, 0, w, h).data; } catch (e) { data = null; }
+    var minX = 0, minY = 0, maxX = w - 1, maxY = h - 1;
+    if (data) {
+      var found = false;
+      minX = w; minY = h; maxX = 0; maxY = 0;
+      for (var y = 0; y < h; y += 2) {
+        for (var x = 0; x < w; x += 2) {
+          if (data[(y * w + x) * 4 + 3] > 40) {
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+            found = true;
+          }
+        }
+      }
+      if (!found) { minX = 0; minY = 0; maxX = w - 1; maxY = h - 1; }
+    }
+    var cw = maxX - minX + 1, ch = maxY - minY + 1;
     var SZ = 96;
     var c = document.createElement('canvas'); c.width = SZ; c.height = SZ;
     var cx = c.getContext('2d');
-    var s = SZ / Math.max(w, h);
-    cx.drawImage(img, (SZ - w * s) / 2, (SZ - h * s) / 2, w * s, h * s);
+    var s = SZ / Math.max(cw, ch);
+    var dw = cw * s, dh = ch * s;
+    // 从原图主体区域裁剪缩放到缓存(只含弹丸本体,去四周半透明外壳)
+    cx.drawImage(img, minX, minY, cw, ch, (SZ - dw) / 2, (SZ - dh) / 2, dw, dh);
     _eBulletTexCache[key] = c;
     return c;
   }
@@ -1352,14 +1377,10 @@
       var bkey = ebulletKey(b);
       var etex = getEBulletTex(bkey);
       if (etex) {
-        var bs = br * (b.isBoss ? 8.5 : 6.6);   // 放大显示尺寸(原 5.4→6.6),贴图细节才看得清
+        var bs = br * (b.isBoss ? 5.2 : 3.8);   // v0.10.14:裁剪主体后无需放大弥补外壳,尺寸回归正常
         ctx.globalCompositeOperation = 'source-over';   // 彻底复位(拖尾段的 lighter 残留会致糊白)
         ctx.globalAlpha = 1;
-        // 外辉光(怪色,lighter 加色,但画完即复位)
-        ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, b.color, b.x, b.y, bs * 0.42, 0.38);
-        ctx.globalCompositeOperation = 'source-over';
-        // 贴图本体:旋转对齐飞行方向(贴图朝下原图,atan2 后 -π/2 对齐),source-over 保质感不染色
+        // v0.10.14:去掉外辉光(那是"透明外壳"视觉感来源);贴图本体已含发光,source-over 干净画即可
         var ang = Math.atan2(b.vy, b.vx) - Math.PI / 2;
         ctx.save();
         ctx.translate(b.x, b.y); ctx.rotate(ang);
