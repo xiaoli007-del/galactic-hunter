@@ -282,19 +282,19 @@
       if (P.pointer.justPressed) {
         this.fire(w);
         this.fireTimer = 0;        // 从本次开火起重新计时连发
+        this._fireTurrets(1.0);    // v0.10.12:副炮改手动——跟随主弹点击瞬间一起开(不再自动)
       }
       if (P.pointer.down) {
         this.fireTimer += dt;
         while (this.fireTimer >= interval) {
           this.fire(w);
           this.fireTimer -= interval;
+          this._fireTurrets(dt);   // v0.10.12:按住连发时副炮也跟随节奏开火
         }
       } else {
         this.fireTimer = 0;
+        this.turretTimer = 0;      // v0.10.12:松开重置副炮计时
       }
-
-      // v0.10:船舰副炮自动开火(独立射速,不依赖玩家点击;按舰级解锁门数/模式)
-      this._fireTurrets(dt);
 
       this.updateWaves(dt);
       this.updateEntities(dt);

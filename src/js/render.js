@@ -1410,47 +1410,37 @@
       ctx.restore();
     },
 
-    // —— 子弹:按等级严格分档 + 特效弹细致叠加 ——
-    //   v0.10.7:等级分档表(尺寸 + 辉光色),等级越高越大越亮,Lv5 量子湮灭独占强化;
-    //           普通弹贴图不被技能/副炮色污染(等级色固定);特效弹在贴图上叠加矢量细节层。
+    // —— 子弹:v0.10.12 重写,修糊方块(贴图本体 source-over 干净画,不再 lighter 漂白)——
+    //   等级 1-5 靠贴图自身配色 + 尺寸区分(贴图已按等级生成);光晕单层克制不抢;
+    //   特效弹贴图已含特效图案,不再叠 fx 层(避免 lighter 下糊成方块);fx 层仅矢量退回用。
     bullet: function (ctx, b) {
       var fx = b.skill && b.skill.fx;
       var wlvl = Math.min(b.weaponLevel || 1, 5);
-      // 等级分档:尺寸倍率 + 辉光色(固定,与武器色一致,保证等级视觉统一不杂)
       var LVL = [
         { scale: 1.00, glow: '#5ad1ff' },  // Lv1 脉冲激光(青)
         { scale: 1.18, glow: '#7df0c0' },  // Lv2 双联激光(绿)
         { scale: 1.40, glow: '#c77dff' },  // Lv3 等离子炮(紫)
         { scale: 1.65, glow: '#ffd166' },  // Lv4 散射波(金)
-        { scale: 2.10, glow: '#ff5d8f' },  // Lv5 量子湮灭(粉)—— 独占强化,最大最亮
+        { scale: 2.10, glow: '#ff5d8f' },  // Lv5 量子湮灭(粉)
       ];
       var ld = LVL[wlvl - 1];
       var isLv5 = wlvl === 5;
-      // v0.10.11:普通弹光晕统一淡蓝白(不再 5 色堆叠致乱),靠贴图自身配色+尺寸区分等级;
-      //           特效弹仍用技能色。Lv5 保留双层强化但更克制。
-      var glowColor = fx ? b.color : (isLv5 ? ld.glow : '#aee9ff');
+      var glowColor = fx ? b.color : ld.glow;
       var br = b.radius;
       var fxScale = fx ? 1.25 : 1.0;
       var bsizeScale = ld.scale * fxScale;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
 
-      // 拖尾:统一细+低 alpha(普通弹不再随等级变浓,避免密集时糊成一片);特效弹按类型差异化
+      // 拖尾:source-over 干净画(不用 lighter,避免与贴图叠加糊白),低 alpha 细线
       if (b.trail.length > 1) {
+        ctx.globalCompositeOperation = 'source-over';
         ctx.strokeStyle = glowColor;
-        ctx.lineWidth = br * (fx === 'laser' ? 3.6 : fx === 'fire' ? 2.8 : fx ? 2.4 : 1.5);
+        ctx.lineWidth = br * (fx === 'laser' ? 2.8 : fx ? 2.0 : 1.4);
         ctx.lineCap = 'round';
-        ctx.globalAlpha = fx === 'fire' ? 0.42 : (fx === 'laser' ? 0.55 : fx ? 0.3 : 0.22);
+        ctx.globalAlpha = fx === 'laser' ? 0.5 : fx ? 0.35 : 0.4;
         ctx.beginPath();
         ctx.moveTo(b.trail[0].x, b.trail[0].y);
-        if (fx === 'bolt') {
-          for (var i = 1; i < b.trail.length; i++) {
-            var jx = (Math.random() - 0.5) * 8, jy = (Math.random() - 0.5) * 8;
-            ctx.lineTo(b.trail[i].x + jx, b.trail[i].y + jy);
-          }
-        } else {
-          for (var k = 1; k < b.trail.length; k++) ctx.lineTo(b.trail[k].x, b.trail[k].y);
-        }
+        for (var k = 1; k < b.trail.length; k++) ctx.lineTo(b.trail[k].x, b.trail[k].y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -1461,27 +1451,30 @@
       var btex = getBulletTex(bkey);
       if (btex) {
         var bs = br * 6.0 * bsizeScale;
-        // Lv5 双层辉光(外等级色+内白);普通弹单层淡蓝白辉光(克制,不喧宾夺主)
-        drawGlow(ctx, glowColor, b.x, b.y, bs * (isLv5 ? 0.72 : 0.42), isLv5 ? 0.42 : 0.26);
-        if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.32, 0.4);
+        // 光晕:lighter drawGlow 画完即复位(不残留到贴图),单层克制
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, glowColor, b.x, b.y, bs * (isLv5 ? 0.55 : 0.35), isLv5 ? 0.4 : 0.22);
+        if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.28, 0.35);
+        // 贴图本体:source-over 干净画(关键——lighter 会把贴图漂白糊成方块)
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(btex, b.x - bs / 2, b.y - bs / 2, bs, bs);
-        _bulletFxLayer(ctx, b, fx, glowColor, bs);   // 特效弹细节叠加层(贴图之上)
         ctx.restore();
         return;
       }
 
-      // 矢量退回(贴图缺失):激光=粗贯穿柱,其余=椭圆能量核 + 白心(与贴图同尺寸分级)
+      // 矢量退回(贴图缺失):椭圆能量核 + 白心;fx 细节层仅此路径用
+      ctx.globalCompositeOperation = 'lighter';
       if (fx === 'laser') {
-        drawGlow(ctx, glowColor, b.x, b.y, br * 4.0, 0.55);
+        drawGlow(ctx, glowColor, b.x, b.y, br * 4.0, 0.5);
         ctx.fillStyle = '#fff';
         ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 1.0, br * 3.0, 0, 0, Math.PI * 2); ctx.fill();
       } else {
-        drawGlow(ctx, glowColor, b.x, b.y, br * 3.2 * ld.scale * 0.7, 0.5);
-        var bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, br * 1.9 * ld.scale * 0.7);
+        drawGlow(ctx, glowColor, b.x, b.y, br * 3.0, 0.4);
+        ctx.globalCompositeOperation = 'source-over';
+        var bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, br * 1.8);
         bg.addColorStop(0, '#fff'); bg.addColorStop(0.5, glowColor); bg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = bg;
-        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 1.1, br * 2.1, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 1.0, br * 1.9, 0, 0, Math.PI * 2); ctx.fill();
       }
       _bulletFxLayer(ctx, b, fx, glowColor, br * 6.0 * bsizeScale);
       ctx.restore();
