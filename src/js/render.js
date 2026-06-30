@@ -1345,26 +1345,25 @@
       }
 
       var br = b.radius;
-      // v0.10.11:贴图敌弹(按攻击方式)。弹头朝下原图,旋转对齐飞行方向;按怪色染色。
+      // v0.10.11/v0.10.12:贴图敌弹(按攻击方式)。弹头朝下原图,旋转对齐飞行方向。
+      //   v0.10.12 修复"像素方块":彻底重置合成模式(source-over + alpha 1)再画贴图,
+      //     去掉染色 fillRect(source-atop 在 lighter 残留下会画成实心方块),贴图本体保持自身配色质感;
+      //     外层怪色辉光提供染色感,显示尺寸放大让贴图细节可见(原图主体仅占 ~16%)。
       var bkey = ebulletKey(b);
       var etex = getEBulletTex(bkey);
       if (etex) {
-        var bs = br * (b.isBoss ? 7.2 : 5.4);   // Boss 重弹更大
-        // 外辉光(怪色)
+        var bs = br * (b.isBoss ? 8.5 : 6.6);   // 放大显示尺寸(原 5.4→6.6),贴图细节才看得清
+        ctx.globalCompositeOperation = 'source-over';   // 彻底复位(拖尾段的 lighter 残留会致糊白)
+        ctx.globalAlpha = 1;
+        // 外辉光(怪色,lighter 加色,但画完即复位)
         ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, b.color, b.x, b.y, bs * 0.5, 0.4);
-        // 贴图本体:旋转对齐飞行方向(贴图朝下=+y 即 atan2 后 +π/2)
-        var ang = Math.atan2(b.vy, b.vx) - Math.PI / 2;   // 朝下原图对齐飞行方向
+        drawGlow(ctx, b.color, b.x, b.y, bs * 0.42, 0.38);
+        ctx.globalCompositeOperation = 'source-over';
+        // 贴图本体:旋转对齐飞行方向(贴图朝下原图,atan2 后 -π/2 对齐),source-over 保质感不染色
+        var ang = Math.atan2(b.vy, b.vx) - Math.PI / 2;
         ctx.save();
         ctx.translate(b.x, b.y); ctx.rotate(ang);
-        ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(etex, -bs / 2, -bs / 2, bs, bs);
-        // 染色:怪色叠到弹体(source-atop 只染不透明像素,保留高光)
-        ctx.globalCompositeOperation = 'source-atop';
-        ctx.fillStyle = b.color;
-        ctx.globalAlpha = 0.35;
-        ctx.fillRect(-bs / 2, -bs / 2, bs, bs);
-        ctx.globalAlpha = 1;
         ctx.restore();
         ctx.restore();
         return;
