@@ -249,6 +249,17 @@
       explosionParticles: 14,
       starCount: 140,
     },
+
+    // v0.10.9:背景音乐曲目表(多首可切换)。HUD 切歌按钮循环切换,当前曲目持久化(localStorage 'gh_bgm_track')。
+    //   name 用于切歌飘字提示;url 为相对 index.html 的路径(文件名纯 ASCII、无空格/括号)。
+    //   sound.js 读此表;缺失时退回内置默认两首,保证健壮。
+    BGM: {
+      volume: 0.35,
+      tracks: [
+        { name: '银河流光', url: 'src/assets/audio/bgm.mp3' },
+        { name: '赛博朋克', url: 'src/assets/audio/bgm2.mp3' },
+      ],
+    },
   };
 
   G.Config = Config;

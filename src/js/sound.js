@@ -14,40 +14,72 @@
   var A;  // G.Platform.audio,init 时绑定
   var lastFire = 0;
 
-  // v0.10.8:背景音乐(HTMLAudioElement + loop)。与音效(程序化合成)分离。
+  // v0.10.8/v0.10.9:背景音乐(HTMLAudioElement + loop,多首可切换)。与音效(程序化合成)分离。
   //   浏览器自动播放策略:首次需用户交互(开始按钮点击)才能播放,故 start 在 startGame 调。
-  //   静音时(audio.isEnabled()=false)不播放;音乐开关 _bgmOn 持久化(localStorage)。
-  var BGM_URL = 'src/assets/audio/bgm.mp3';
-  var _bgmEl = null;
+  //   静音时(audio.isEnabled()=false)不播放;音乐开关 _bgmOn 持久化('gh_bgm')。
+  //   v0.10.9:曲目表来自 Config.BGM.tracks;当前曲目 _trackIdx 持久化('gh_bgm_track'),HUD 切歌按钮循环切换。
+  var DEFAULT_TRACKS = [
+    { name: '银河流光', url: 'src/assets/audio/bgm.mp3' },
+    { name: '赛博朋克', url: 'src/assets/audio/bgm2.mp3' },
+  ];
+  var _tracks = (function () {
+    try { var t = G.Config && G.Config.BGM && G.Config.BGM.tracks; return (t && t.length) ? t : DEFAULT_TRACKS; }
+    catch (e) { return DEFAULT_TRACKS; }
+  })();
+  var _BGM_VOL = (function () { try { var v = G.Config && G.Config.BGM && G.Config.BGM.volume; return v || 0.35; } catch (e) { return 0.35; } })();
+  var _bgmEl = null;            // 单 HTMLAudioElement,换源复用(loop/volume 在换源后保留)
+  var _loadedIdx = -1;          // _bgmEl 已载入的下标;-1=未载入/失效(强制 _loadCurrent 重设源)
   var _bgmOn = (function () {
     try { return localStorage.getItem('gh_bgm') !== '0'; } catch (e) { return true; }
   })();
+  var _trackIdx = (function () {
+    try {
+      var i = parseInt(localStorage.getItem('gh_bgm_track'), 10);
+      return (isNaN(i) || i < 0 || i >= _tracks.length) ? 0 : i;
+    } catch (e) { return 0; }
+  })();
+
+  // 懒建 _bgmEl(loop=true/volume/preload auto)。node 无 Audio 返回 null。
+  function _ensureEl() {
+    if (_bgmEl) return _bgmEl;
+    if (typeof Audio === 'undefined') return null;
+    try {
+      _bgmEl = new Audio();
+      _bgmEl.loop = true;
+      _bgmEl.volume = _BGM_VOL;
+      _bgmEl.preload = 'auto';
+    } catch (e) { _bgmEl = null; }
+    return _bgmEl;
+  }
+  // 把当前 _trackIdx 对应曲目载入 _bgmEl(仅当 _loadedIdx !== _trackIdx 才设源,避免重复 load)。
+  //   设 .src 后元素保持 paused(不自动播放);loop/volume/preload 换源后保留。
+  function _loadCurrent() {
+    var el = _ensureEl(); if (!el) return;
+    if (_loadedIdx !== _trackIdx) {
+      var t = _tracks[_trackIdx] || _tracks[0];
+      try { el.src = t.url; el.load(); } catch (e) {}
+      _loadedIdx = _trackIdx;
+    }
+  }
 
   var Sound = {
     init: function () { A = G.Platform && G.Platform.audio; },
 
     // —— 背景音乐控制 ——
-    // start():加载并循环播放。若已存在则 resume。静音/用户关闭时不发声。
+    // start():载入当前曲目并播放。静音/用户关闭时不发声(但元素仍建,便于解除后直接播当前曲)。
     bgmStart: function () {
       if (!_bgmOn) return;
       if (typeof Audio === 'undefined') return;   // node 环境无 Audio
-      if (!_bgmEl) {
-        try {
-          _bgmEl = new Audio(BGM_URL);
-          _bgmEl.loop = true;
-          _bgmEl.volume = 0.35;        // 背景音压低,不盖过开火/击杀音效
-          _bgmEl.preload = 'auto';
-        } catch (e) { _bgmEl = null; return; }
-      }
-      // 静音时也建元素但不播放(play 会 reject,catch 吞掉)
-      if (A && !A.isEnabled()) return;
+      _loadCurrent();                              // v0.10.9:确保元素 + 当前曲目源就绪
+      if (!_bgmEl) return;
+      if (A && !A.isEnabled()) return;             // 静音时也建元素但不播放(play 会 reject,catch 吞掉)
       var p = _bgmEl.play();
       if (p && p.catch) p.catch(function () { /* 自动播放策略拦截,等下次交互 */ });
     },
     bgmPause: function () {
       if (_bgmEl && !_bgmEl.paused) { try { _bgmEl.pause(); } catch (e) {} }
     },
-    // 静音状态变化时同步:BGM 开着→静音则暂停,解除则恢复
+    // 静音状态变化时同步:BGM 开着→静音则暂停,解除则恢复(_bgmEl 源已由 start/next 同步到当前曲)
     bgmSync: function () {
       if (!_bgmEl) return;
       if (_bgmOn && A && A.isEnabled()) {
@@ -63,6 +95,25 @@
       return _bgmOn;
     },
     bgmIsOn: function () { return _bgmOn; },
+    // v0.10.9:切换到下一首(循环)。正在播放→换源续播(新曲从头);关闭/暂停中→仅更新索引,
+    //   下次 bgmStart 用新曲。单首时 no-op。返回新索引。
+    bgmNext: function () {
+      if (_tracks.length <= 1) return _trackIdx;   // 单首不可切(优雅降级)
+      var wasPlaying = !!_bgmEl && !_bgmEl.paused && _bgmOn && (!A || A.isEnabled());
+      _trackIdx = (_trackIdx + 1) % _tracks.length;
+      try { localStorage.setItem('gh_bgm_track', String(_trackIdx)); } catch (e) {}
+      if (typeof Audio === 'undefined') return _trackIdx;   // node:仅更新索引
+      if (_bgmEl) {                                         // 元素已存在→立即换源(无论播放/暂停)
+        _loadedIdx = -1;                                    // 失效,强制 _loadCurrent 重设源
+        _loadCurrent();
+        if (wasPlaying) { var p = _bgmEl.play(); if (p && p.catch) p.catch(function () {}); }
+      }
+      // 元素不存在(从未 start / 音乐关):仅更新索引,下次 bgmStart 的 _loadCurrent 载入新曲
+      return _trackIdx;
+    },
+    bgmTrackIdx:   function () { return _trackIdx; },
+    bgmTrackCount: function () { return _tracks.length; },
+    bgmTrackName:  function () { var t = _tracks[_trackIdx]; return t ? t.name : ''; },
 
 
     play: function (name) {

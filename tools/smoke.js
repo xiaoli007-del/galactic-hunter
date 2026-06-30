@@ -28,6 +28,9 @@ global.window = {
   addEventListener: function (e, cb) { listeners[e] = cb; },
   localStorage: { getItem: function (k) { return k in lsStore ? lsStore[k] : null; }, setItem: function (k, v) { lsStore[k] = v; } },
 };
+// 浏览器里 localStorage 是全局属性(裸 localStorage === window.localStorage)。sound.js BGM 模块用裸
+// localStorage 读写,故 node 环境需在 global 上同样挂一份,否则读写静默失败(被 try-catch 吞掉)。
+global.localStorage = global.window.localStorage;
 global.document = {
   getElementById: function () { return canvas; },
   createElement: function () { return { width: 64, height: 64, getContext: function () { return makeCtx(); } }; },
@@ -102,6 +105,24 @@ G.Platform.audio.setEnabled(false);
 G.Sound.play('fire');
 G.Platform.audio.setEnabled(true);
 assert(true, '音效系统在无 AudioContext 环境安全运行');
+
+console.log('\n[3d] v0.10.9 BGM 多曲切换(无 Audio 静默 no-op,验证索引/持久化/环绕)');
+assert(typeof G.Sound.bgmTrackCount === 'function', 'bgmTrackCount 接口存在');
+assert(G.Sound.bgmTrackCount() === 2, '两首曲目 (count=' + G.Sound.bgmTrackCount() + ')');
+assert(G.Sound.bgmTrackIdx() === 0, '初始曲目 idx=0');
+assert(typeof G.Sound.bgmTrackName() === 'string' && G.Sound.bgmTrackName().length > 0, '当前曲名非空 (' + G.Sound.bgmTrackName() + ')');
+// 无 Audio 环境:bgmStart/Pause/Sync 安全 no-op 不抛
+G.Sound.bgmStart(); G.Sound.bgmPause(); G.Sound.bgmSync();
+assert(true, 'bgmStart/Pause/Sync 无 Audio 安全 no-op');
+// 切歌:0→1→0(环绕);无元素时仅更新索引
+var i0 = G.Sound.bgmNext();
+assert(i0 === 1 && G.Sound.bgmTrackIdx() === 1, '切到第 2 首 (idx=' + G.Sound.bgmTrackIdx() + ', name=' + G.Sound.bgmTrackName() + ')');
+var i1 = G.Sound.bgmNext();
+assert(i1 === 0 && G.Sound.bgmTrackIdx() === 0, '再切回第 1 首(环绕 idx=' + G.Sound.bgmTrackIdx() + ')');
+// 持久化:gh_bgm_track 已写入(末态为 '0')
+assert(lsStore['gh_bgm_track'] === '0', "持久化键 gh_bgm_track='0'");
+// 复位到第 0 首避免影响后续用例
+lsStore['gh_bgm_track'] = '0';
 
 console.log('\n[3b] 精准击杀链路(子弹命中→积分→金币)');
 Game.startGame();

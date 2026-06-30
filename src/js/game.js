@@ -872,11 +872,25 @@
       ctx.textBaseline = 'alphabetic';
       ctx.restore();
 
-      // 音效开关 + 暂停按钮 + BGM 开关(右上角)
+      // 音效开关 + 暂停按钮 + BGM 开关 + 切歌按钮(右上角)
       var sndOn = P.audio.isEnabled();
       var sbS = 32;
-      var pbX = W - 132, mbX = W - 88, sbX = W - 44, sbY = 8;   // 暂停 / 音乐 / 音效 三按钮
+      // v0.10.9:四按钮 — 暂停 / 切歌 / 音乐 / 音效(左→右)。音效仍最右,音乐与切歌相邻。
+      var pbX = W - 176, nbX = W - 132, mbX = W - 88, sbX = W - 44, sbY = 8;
       if (this._button(ctx, pbX, sbY, sbS, sbS, '⏸', true, true)) this._pause();
+      // v0.10.9:切歌按钮(下一首)。点击→bgmNext + 顶部飘字提示当前曲名。
+      if (this._button(ctx, nbX, sbY, sbS, sbS, '⏭', true, true)) {
+        if (Snd) {
+          Snd.bgmNext();
+          this.texts.push(new Ent.FloatingText(C.WIDTH / 2, 120, '♪ ' + Snd.bgmTrackName(), '#5ad1ff', 24));
+        }
+      }
+      // 切歌按钮下方常显 "当前/总数" 小字(让玩家知道共几首、现在是第几首)
+      ctx.save();
+      ctx.fillStyle = 'rgba(160,200,255,0.7)'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+      ctx.fillText((Snd ? Snd.bgmTrackIdx() : 0) + 1 + '/' + (Snd ? Snd.bgmTrackCount() : 1),
+        nbX + sbS / 2, sbY + sbS + 10);
+      ctx.restore();
       // v0.10.8:BGM 开关(🎵 开 / 🎶 关)。独立于音效,持久化。
       var bgmOn = Snd ? Snd.bgmIsOn() : false;
       if (this._button(ctx, mbX, sbY, sbS, sbS, bgmOn ? '🎵' : '🎶', true, true)) {
