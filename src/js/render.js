@@ -274,9 +274,11 @@
     var cfg = G.Config, n = cfg.FX.starCount;
     stars = [];
     for (var i = 0; i < n; i++) {
+      var layer = Math.random() * 0.6 + 0.4;   // 0.4~1.0,近层大且快
       stars.push({
         x: Math.random() * cfg.WIDTH, y: Math.random() * cfg.HEIGHT,
-        r: Math.random() * 1.6 + 0.3, layer: Math.random() * 0.6 + 0.4,
+        r: Math.random() * 1.6 + 0.3, layer: layer,
+        vy: 30 + layer * 90,                    // v0.10.15:视差下沉速度(近层快,模拟飞船在飞)
         tw: Math.random() * Math.PI * 2, tws: Math.random() * 2 + 0.5,
       });
     }
@@ -383,30 +385,39 @@
 
   var Render = {
 
-    background: function (ctx, t) {
+    background: function (ctx, t, dt) {
       ensureStars();
       var cfg = G.Config, W = cfg.WIDTH, H = cfg.HEIGHT;
 
-      // v0.10.3:优先用 AI 生图背景(bg.png)。等比缩放铺满竖屏(以宽度为准、高度裁剪),
-      //   缺失退回程序化 buildBackground。星点闪烁仍叠加在背景之上(动态层次)。
+      // v0.10.3/v0.10.15:优先用 AI 生图背景(bg.png)。
+      //   v0.10.15:流动星云 —— 双图上下平移无缝循环(offset = t*speed % dh),
+      //   营造飞船持续向上的飞行感。缺失退回程序化 buildBackground(静态)。
       var bgTex = G.Assets && G.Assets.get('bg');
       if (bgTex) {
         var iw = bgTex.naturalWidth, ih = bgTex.naturalHeight;
-        var scale = W / iw;             // 以宽度铺满,高度可能超出(裁掉)
+        var scale = W / iw;
         var dw = W, dh = ih * scale;
-        var oy = (H - dh) / 2;          // 垂直居中(上下各裁一半)
-        // 若高度不足则以高度为准、宽度裁剪(保证铺满不留白)
+        var oy = (H - dh) / 2;
         if (dh < H) { scale = H / ih; dw = iw * scale; dh = H; oy = 0; }
         var ox = (W - dw) / 2;
-        ctx.drawImage(bgTex, ox, oy, dw, dh);
+        // v0.10.15:双图平移流动(向下滚动,模拟飞船向上飞)
+        var flow = (t * 40) % dh;          // 流动速度 40px/s
+        if (dh > H) {
+          ctx.drawImage(bgTex, 0, 0, iw, ih, ox, oy + flow - dh, dw, dh);      // 上图(滚出顶部)
+          ctx.drawImage(bgTex, 0, 0, iw, ih, ox, oy + flow, dw, dh);          // 下图(滚入)
+        } else {
+          ctx.drawImage(bgTex, ox, oy, dw, dh);   // 高度刚好不流动
+        }
       } else {
         if (!bgCanvas) buildBackground();
         ctx.drawImage(bgCanvas, 0, 0);
       }
 
-      // 星点闪烁(叠加在背景上,动态层次;背景图本身也有星,这层增加闪烁感)
+      // v0.10.15:视差星空 —— 星星按 layer 下沉(近层快),溢出底部回卷到顶部,模拟飞行纵深
       for (var s = 0; s < stars.length; s++) {
         var st = stars[s];
+        st.y += st.vy * (dt || 0);
+        if (st.y > H + 5) { st.y = -5; st.x = Math.random() * W; }   // 回卷 + 随机新 x
         var a = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * st.tws + st.tw));
         ctx.globalAlpha = a * st.layer;
         ctx.fillStyle = '#cfe4ff';
@@ -778,6 +789,21 @@
 
       ctx.restore();
       this._alienStatus(ctx, a, r);
+      // v0.10.15:Boss 护盾环(shield>0 时画半透明能量环 + 脉动,颜色用 Boss 配色)
+      if (a.isBoss && a.shield > 0 && a.maxShield > 0) {
+        var sp = 0.5 + 0.5 * Math.sin(Date.now() / 150);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = 'rgba(127,224,255,' + (0.5 + sp * 0.4) + ')';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(a.x, a.y, r * 1.12, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(180,240,255,' + (0.3 + sp * 0.3) + ')';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(a.x, a.y, r * 1.22, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        // 盾条(血条上方,蓝色)
+        this._hpBar(ctx, a.x, a.y - r - 18, r * 1.6, a.shield / a.maxShield, '#7fe0ff');
+      }
       if (a.hp < a.maxHp) this._hpBar(ctx, a.x, a.y - r - 10, r * 1.6, a.hp / a.maxHp, def.color);
     },
 
@@ -1467,8 +1493,8 @@
         ctx.globalAlpha = 1;
       }
 
-      // 贴图弹头:技能弹按 fx 取 bullet-{fx};普通弹按武器等级取 bullet{lvl}。
-      var bkey = fx ? ('bullet-' + fx) : ('bullet' + wlvl);
+      // 贴图弹头:副炮弹用 turret-bullet;技能弹按 fx 取 bullet-{fx};普通弹按武器等级取 bullet{lvl}。
+      var bkey = b.turret ? 'turret-bullet' : (fx ? ('bullet-' + fx) : ('bullet' + wlvl));
       var btex = getBulletTex(bkey);
       if (btex) {
         var bs = br * 6.0 * bsizeScale;

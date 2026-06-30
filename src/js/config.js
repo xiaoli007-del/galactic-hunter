@@ -131,6 +131,38 @@
              fire: { pattern: 'aimed', every: 2.7, count: 2, spread: 0.16, speed: 285, telegraph: 0.5 } },
       t20: { name: '齿轮巨虫',   tier: 4, hp: 11, score: 120, coin: 22,  radius: 30, speed: 48, spawnWeight: 9,  color: '#cfd8dc', behavior: null,
              fire: { pattern: 'spiral', every: 0.35, count: 3, spiralStep: 0.38, speed: 250, telegraph: 0 } },
+      // v0.10.15:5 新 Boss(更高阶,各配一个鲜明机制 mechanism)。bossVisScale 让直径≈432 占屏 3/5。
+      //   mechanism: shield 召唤护盾 / summon 召唤仆从 / absorb 吸收伤害 / wave 位移冲击波。
+      'boss-titan': { name: '泰坦战舰', tier: 8, hp: 1500, score: 6000, coin: 800, radius: 115, speed: 30, spawnWeight: 0, color: '#5ad1ff', behavior: null, boss: true, bossVisScale: 1.88, mechanism: 'shield', shield: 400,
+        fire: { stages: {
+          1: { pattern: 'aimed',  every: 2.0, count: 3, spread: 0.22, speed: 320, telegraph: 0.5 },
+          2: { pattern: 'aimed',  every: 1.4, count: 4, spread: 0.28, speed: 340, telegraph: 0.45 },
+          3: { pattern: 'ring',   every: 2.2, count: 18, speed: 280, telegraph: 0 },
+        } } },
+      'boss-hydra': { name: '九头蛇母舰', tier: 9, hp: 1800, score: 8000, coin: 1000, radius: 135, speed: 28, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true, bossVisScale: 1.60, mechanism: 'summon', summonType: 't7', summonCount: 3,
+        fire: { stages: {
+          1: { pattern: 'spiral', every: 0.22, count: 3, spiralStep: 0.4, speed: 290, telegraph: 0 },
+          2: { pattern: 'spiral', every: 0.18, count: 4, spiralStep: 0.34, speed: 310, telegraph: 0 },
+          3: { pattern: 'ring',   every: 2.0, count: 20, speed: 300, telegraph: 0 },
+        } } },
+      'boss-crystall': { name: '晶体巨核', tier: 9, hp: 2200, score: 10000, coin: 1200, radius: 155, speed: 24, spawnWeight: 0, color: '#5affb0', behavior: null, boss: true, bossVisScale: 1.39, mechanism: 'absorb',
+        fire: { stages: {
+          1: { pattern: 'ring',   every: 2.5, count: 16, speed: 260, telegraph: 0 },
+          2: { pattern: 'spiral', every: 0.16, count: 3, spiralStep: 0.34, speed: 280, telegraph: 0 },
+          3: { pattern: 'ring',   every: 1.8, count: 22, speed: 290, telegraph: 0 },
+        } } },
+      'boss-maw': { name: '虚空巨口', tier: 10, hp: 2800, score: 14000, coin: 1500, radius: 140, speed: 22, spawnWeight: 0, color: '#ff5d8f', behavior: null, boss: true, bossVisScale: 1.55, mechanism: 'wave',
+        fire: { stages: {
+          1: { pattern: 'spiral', every: 0.20, count: 4, spiralStep: 0.30, speed: 300, telegraph: 0 },
+          2: { pattern: 'wave',  every: 3.0, count: 24, speed: 200, telegraph: 0.8 },
+          3: { pattern: 'ring',   every: 1.6, count: 24, speed: 320, telegraph: 0 },
+        } } },
+      'boss-overlord': { name: '霸主中枢', tier: 10, hp: 3500, score: 20000, coin: 2000, radius: 155, speed: 20, spawnWeight: 0, color: '#ffd166', behavior: null, boss: true, bossVisScale: 1.45, mechanism: 'summon', shield: 600, summonType: 't8', summonCount: 2,
+        fire: { stages: {
+          1: { pattern: 'aimed',  every: 1.6, count: 4, spread: 0.24, speed: 340, telegraph: 0.45 },
+          2: { pattern: 'spiral', every: 0.14, count: 5, spiralStep: 0.28, speed: 320, telegraph: 0 },
+          3: { pattern: 'ring',   every: 1.5, count: 26, speed: 340, telegraph: 0 },
+        } } },
     },
     // 特殊行为数值(v0.3)
     BEHAVIOR: {
@@ -157,7 +189,7 @@
       bossAlertDuration: 4.0,    // v0.10.7:Boss 入场前警报持续秒(3-4s 营造压迫感,期间 Boss 不入场)
       maxAliensOnScreen: 26,
       // v0.8:Boss 轮换 —— 每个触发点按序循环 t6→t9→t10→t6…,避免单一 Boss。
-      bossRotation: ['t6', 't9', 't10'],
+      bossRotation: ['t6', 't9', 't10', 'boss-titan', 'boss-hydra', 'boss-crystall', 'boss-maw', 'boss-overlord'],   // v0.10.15:8 Boss 轮换(原3前期+新5高阶)
     },
 
     // 敌弹(v0.8):新精英/Boss 发射的子弹。伤害=1(与本体撞击一致:消一格护盾或扣 1 hp),

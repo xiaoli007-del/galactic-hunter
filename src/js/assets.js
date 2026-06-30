@@ -27,7 +27,9 @@
            'bullet-ice','bullet-fire','bullet-bolt','bullet-laser',
            'explosion',                                                            // v0.10.11:爆炸特效
            'ebullet-aimed','ebullet-ring','ebullet-boss','enemy-bullet',        // v0.10.11:敌弹(aimed直射/ring环射/boss重弹;spiral复用enemy-bullet)
-           'powerup-ice','powerup-fire','powerup-bolt','powerup-laser','powerup-multi2'],  // v0.10.11:技能胶囊(双/三/四发共用 multi2 底图+程序画数字)
+           'powerup-ice','powerup-fire','powerup-bolt','powerup-laser','powerup-multi2',   // v0.10.11:技能胶囊(双/三/四发共用 multi2 底图+程序画数字)
+           'boss-titan','boss-hydra','boss-crystall','boss-maw','boss-overlord',          // v0.10.15:5 新 Boss(护盾/仆从/吸收/冲击波机制)
+           'turret-bullet'],                                                                // v0.10.15:副炮小弹贴图
 
     init: function () {
       var self = this;

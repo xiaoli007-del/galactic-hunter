@@ -243,6 +243,7 @@
     // ================= 主循环 =================
     update: function (dt) {
       this.time += dt;
+      this._lastDt = dt;   // v0.10.15:供 render 的动态背景推进星空视差用
       if (this.screenFlash > 0) this.screenFlash -= dt * 2;
       if (this.bossAlert > 0) this.bossAlert -= dt;   // v0.10.4:Boss 警报倒计时
       // FPS 统计(0.5s 滑窗)
@@ -552,8 +553,15 @@
 
     // v0.5:子弹命中结算伤害 + 施加技能状态(冰冻减速 / 火焰灼烧)
     _applyBulletHit: function (b, a) {
-      a.takeDamage(b.damage);
-      this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '-' + Math.round(b.damage), b.color, 18));
+      var hit = a.takeDamage(b.damage);
+      // v0.10.15:按命中类型飘字(hp 扣血/shield 护盾吸收/absorb 回血)
+      if (hit === 'shield') {
+        this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '护盾 ' + Math.round(b.damage), '#7fe0ff', 18));
+      } else if (hit === 'absorb') {
+        this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '+' + Math.round(b.damage * 0.5) + ' 吸收', '#5affb0', 18));
+      } else {
+        this.texts.push(new Ent.FloatingText(a.x, a.y - a.def.radius, '-' + Math.round(b.damage), b.color, 18));
+      }
       if (b.skill) {
         if (b.skill.slowMul) {                       // 冰冻
           a.slowMul = b.skill.slowMul;
@@ -631,11 +639,21 @@
       }
     },
 
-    // —— Boss 多阶段回调(v0.3)——
+    // —— Boss 多阶段回调(v0.3/v0.10.15 机制触发)——
     _onBossStage: function (boss, stage) {
       if (stage === 2) this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2 - 80, '⚠ BOSS 狂暴', '#ff8a3d', 30));
       else if (stage === 3) this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2 - 80, '⚠ BOSS 暴怒!', '#ff3d6e', 32));
       this.screenFlash = 0.3;
+      // v0.10.15:阶段切换触发机制
+      //   shield 机制:进入阶段 2/3 时补满护盾(护盾在时无法受伤,需先打破)
+      if (boss.maxShield > 0 && stage >= 2) {
+        boss.shield = boss.maxShield;
+        this.texts.push(new Ent.FloatingText(boss.x, boss.y - boss.def.radius * (boss.def.bossVisScale || 1) - 20, '⚡ 护盾激活', '#7fe0ff', 22));
+      }
+      // summon 机制:阶段 2/3 立即召唤一轮仆从(_bossSummon 已支持 per-Boss summonType/summonCount)
+      if (boss.mechanism === 'summon' && stage >= 2) {
+        this._bossSummon(boss);
+      }
     },
     // Boss 召唤小怪:在 Boss 周边生成,受同屏上限约束
     // v0.8:Boss 可用自身 def.summonType/summonCount override 全局(t10 召唤 t2×3,t6 仍走全局)
@@ -685,6 +703,15 @@
           this._spawnEBullet(alien, ra, sp, col, pat, boss);
         }
         alien.fireAngle += 0.3;   // 微漂使每环错开
+      } else if (pat === 'wave') {
+        // v0.10.15:位移冲击波 —— 全圆均布膨胀弹(从 Boss 中心向外径向,半径随时间增大)
+        for (var w = 0; w < n; w++) {
+          var wa = alien.fireAngle + (w / n) * Math.PI * 2;
+          var eb = new Ent.EnemyBullet(alien.x, alien.y, Math.cos(wa) * sp, Math.sin(wa) * sp, col, 'ring', boss);
+          eb.expand = true;   // 标记膨胀(update 里 radius 增大)
+          this.enemyBullets.push(eb);
+        }
+        alien.fireAngle += 0.4;
       }
     },
     // 生成一发敌弹(从怪物边缘出膛,避免在自身碰撞圈内生成)
@@ -812,7 +839,7 @@
       var s = P._scale * P._dpr, ox = P._offsetX * P._dpr, oy = P._offsetY * P._dpr;
       ctx.setTransform(s, 0, 0, s, ox, oy);
 
-      R.background(ctx, this.time);
+      R.background(ctx, this.time, this._lastDt || 0);   // v0.10.15:传 dt 供星空视差推进
 
       if (this.state === STATE.PLAYING || this.state === STATE.GAMEOVER || this.state === STATE.PAUSED) {
         this.drawWorld(ctx);

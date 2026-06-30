@@ -165,6 +165,14 @@
     this.summonTimer = 0;      // 召唤倒计时
     this.dashTimer = 0;        // 冲刺倒计时
     this.dashing = 0;          // 冲刺剩余秒数(>0 时冲刺中)
+    // v0.10.15:Boss 机制字段
+    this.mechanism = def.mechanism || null;   // shield/summon/absorb/wave
+    this.shield = def.shield || 0;            // Boss 护盾(>0 时吸收伤害不扣血)
+    this.maxShield = def.shield || 0;
+    this.shieldRegenTimer = 0;
+    this.waveState = 0;         // 位移冲击波状态机:0 待机/1 预警/2 冲刺/3 回位
+    this.waveTimer = 0;          // 状态计时
+    this.waveTargetX = 0;       // 冲刺目标 X
     // 特殊行为(v0.3):def.behavior
     this.behavior = def.behavior || null;
     this.blinkCd = 0;          // 幽灵闪现冷却(防连击)
@@ -226,8 +234,15 @@
       }
       // v0.10.5:Boss 固定停在屏幕上方正中,不移动(只发弹 + 召唤 + 受击)。
       //   缓动吸附到固定锚点(WIDTH/2, 上方 bossY),到位后保持;阶段切换时轻微震颤强化压迫感。
+      //   v0.10.15:wave 机制 Boss(maw)阶段≥2 时锚点 X 周期横移(位移压迫感 + 配合冲击波)。
       var anchorX = G.Config.WIDTH / 2;
       var anchorY = G.Config.BOSS.bossY;
+      if (this.mechanism === 'wave' && this.bossStage >= 2) {
+        // 横向正弦漂移(阶段3 漂移幅度更大)
+        var amp = this.bossStage >= 3 ? 220 : 140;
+        anchorX = G.Config.WIDTH / 2 + Math.sin(this.waveTimer * 0.8) * amp;
+        this.waveTimer += dt;
+      }
       this.x += (anchorX - this.x) * Math.min(1, dt * 3);
       this.y += (anchorY - this.y) * Math.min(1, dt * 3);
       // 阶段≥2 震颤(压迫感:小幅随机抖动,模拟能量爆发)
@@ -366,10 +381,25 @@
       this._aimArmed = false;
     }
   };
+  // v0.10.15:takeDamage 返回命中类型('hp'/'shield'/'absorb'),供飘字区分。
+  //   Boss 护盾>0 时扣盾不扣血;absorb 机制有概率把伤害转为回血。
   Alien.prototype.takeDamage = function (dmg) {
+    // absorb 机制:30% 概率吸收伤害回血(限 maxHp)
+    if (this.mechanism === 'absorb' && this.hp < this.maxHp && Math.random() < 0.3) {
+      this.hp = Math.min(this.maxHp, this.hp + dmg * 0.5);
+      this.hitFlash = 0.08;
+      return 'absorb';
+    }
+    // Boss 护盾吸收
+    if (this.shield > 0) {
+      this.shield -= dmg;
+      this.hitFlash = 0.08;
+      if (this.shield < 0) { this.shield = 0; }
+      return 'shield';
+    }
     this.hp -= dmg;
     this.hitFlash = 0.08;
-    if (this.hp <= 0) { this.dead = true; return; }
+    if (this.hp <= 0) { this.dead = true; return 'hp'; }
     // T4 幽灵闪现回避:受击未死时概率瞬移,闪现期间 cd 内不再触发
     if (this.behavior === 'blink' && this.blinkCd <= 0) {
       var B = G.Config.BEHAVIOR;
@@ -385,6 +415,7 @@
       }
       this.blinkCd = 0.6;
     }
+    return 'hp';
   };
 
   // —— 粒子 ——
@@ -420,6 +451,7 @@
     this.damage = G.Config.ENEMY_BULLET.damage;
     this.pattern = pattern || 'aimed';   // v0.10.11:aimed/spiral/ring,渲染按此选贴图
     this.isBoss = !!isBoss;              // v0.10.11:Boss 弹用重弹贴图
+    this.expand = false;                  // v0.10.15:wave 冲击波弹膨胀标记
     this.trail = [];
     this.dead = false;
   }
@@ -428,8 +460,13 @@
     if (this.trail.length > G.Config.ENEMY_BULLET.trail) this.trail.shift();
     this.x += this.vx * dt;
     this.y += this.vy * dt;
+    // v0.10.15:冲击波弹膨胀(半径随时间增大,限上限 40),减速模拟扩散衰减
+    if (this.expand) {
+      this.radius = Math.min(40, this.radius + dt * 30);
+      this.vx *= 0.98; this.vy *= 0.98;
+    }
     var cfg = G.Config;
-    if (this.x < -20 || this.x > cfg.WIDTH + 20 || this.y < -20 || this.y > cfg.HEIGHT + 20) this.dead = true;
+    if (this.x < -40 || this.x > cfg.WIDTH + 40 || this.y < -40 || this.y > cfg.HEIGHT + 40) this.dead = true;
   };
   EnemyBullet.prototype.draw = function (ctx) { G.Render.enemyBullet(ctx, this); };
 

@@ -571,7 +571,7 @@ assert(G.Config.ALIENS.t7.behavior === 'dash', 't7 撕裂者标记 dash 行为')
 assert(G.Config.ALIENS.t8.fire.pattern === 'aimed', 't8 守卫者 aimed 敌弹');
 assert(G.Config.ALIENS.t9.boss === true && G.Config.ALIENS.t9.fire.stages, 't9 钢铁巨像 Boss + 阶段弹幕');
 assert(G.Config.ALIENS.t10.boss === true && G.Config.ALIENS.t10.summonType === 't2', 't10 虚空吞噬者 Boss + 召唤override');
-assert(JSON.stringify(G.Config.WAVE.bossRotation) === '["t6","t9","t10"]', 'Boss 轮换序列 t6→t9→t10');
+assert(JSON.stringify(G.Config.WAVE.bossRotation) === '["t6","t9","t10","boss-titan","boss-hydra","boss-crystall","boss-maw","boss-overlord"]', 'v0.11 Boss 轮换序列 8 Boss(t6/t9/t10 + 5 新)');
 assert(G.Config.ENEMY_BULLET.damage === 1, '敌弹伤害=1(走护盾/hp 同路径)');
 assert(typeof G.Entities.EnemyBullet === 'function', 'EnemyBullet 实体已导出');
 // t7 非 Boss、不发弹;Boss 标志统一(向后兼容 t6)
@@ -684,7 +684,7 @@ Game.enemyBullets.length = 0;
 vd.bossStage = 1; vd.fireTimer = 0.05; vd.update(0.2);
 assert(Game.enemyBullets.length === 4, 't10 阶段1 spiral 4臂 (得 ' + Game.enemyBullets.length + ')');
 
-console.log('\n[18] v0.8 Boss 轮换 t6→t9→t10');
+console.log('\n[18] v0.11 Boss 轮换 8 序列(t6/t9/t10 + 5 新 Boss 循环)');
 Game.startGame();
 assert(Game._bossIdx === 0, '开局 _bossIdx=0(首 Boss 恒 t6)');
 // v0.10.7:Boss 触发后先警报(bossAlert>0、_bossPending),不立即入场。
@@ -708,7 +708,13 @@ assert(Game._bossIdx === 1, '_bossIdx 递增到 1');
 var boss2 = triggerBossNext(G.Config.WAVE.bossEveryKills * 2);
 assert(boss2.type === 't9', '第2次触发 → t9 (轮换生效)');
 assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 3).type === 't10', '第3次触发 → t10');
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 4).type === 't6', '第4次触发 → 回 t6(循环)');
+// v0.11:轮换扩到 8 Boss,第4-8 次触发 5 个新 Boss(各自机制),第9 次回 t6(8-Boss 循环)
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 4).type === 'boss-titan', '第4次触发 → boss-titan (机制 shield)');
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 5).type === 'boss-hydra', '第5次触发 → boss-hydra (机制 summon)');
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 6).type === 'boss-crystall', '第6次触发 → boss-crystall (机制 absorb)');
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 7).type === 'boss-maw', '第7次触发 → boss-maw (机制 wave)');
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 8).type === 'boss-overlord', '第8次触发 → boss-overlord (机制 summon+shield)');
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 9).type === 't6', '第9次触发 → 回 t6 (8-Boss 循环)');
 
 console.log('\n[18b] v0.10.7 单波单 Boss(不堆叠)');
 Game.startGame();
@@ -814,6 +820,59 @@ for (var tl = 1; tl <= 5; tl++) {
   Game.ship.update(0.02); Game.ship.draw(makeCtx());
 }
 assert(true, '飞船 Lv1→Lv5 含副炮座渲染路径无异常');
+
+// ==================== v0.11:5 新 Boss 机制(shield/summon/absorb/wave)====================
+console.log('\n[23] v0.11 新 Boss — 配置完整(机制/阶段/不进刷新池)');
+['boss-titan', 'boss-hydra', 'boss-crystall', 'boss-maw', 'boss-overlord'].forEach(function (bt) {
+  var d = G.Config.ALIENS[bt];
+  assert(d.boss === true && d.mechanism && d.spawnWeight === 0, bt + ' 配置完整 (boss/mechanism=' + d.mechanism + '/spawnWeight=0)');
+  assert(d.bossVisScale > 0 && d.fire.stages, bt + ' 有 bossVisScale + 阶段弹幕 (visScale=' + d.bossVisScale + ')');
+});
+assert(G.Config.ALIENS['boss-hydra'].mechanism === 'summon' && G.Config.ALIENS['boss-hydra'].summonType === 't7', 'hydra 机制 summon → 召唤 t7');
+assert(G.Config.ALIENS['boss-overlord'].summonType === 't8', 'overlord 召唤 t8 仆从');
+assert(G.Config.ALIENS['boss-maw'].mechanism === 'wave', 'maw 机制 wave');
+assert(G.Config.ALIENS['boss-crystall'].mechanism === 'absorb', 'crystall 机制 absorb');
+assert(G.Config.ALIENS['boss-titan'].mechanism === 'shield', 'titan 机制 shield');
+
+console.log('\n[24] v0.11 takeDamage — shield 吸收 / absorb 回血 / 阶段激活');
+// shield 机制(titan):shield>0 时扣盾不扣血,返回 'shield'
+var titan = new G.Entities.Alien('boss-titan', G.Config.WIDTH / 2, 200);
+assert(titan.shield === 400 && titan.maxShield === 400, 'titan 初始护盾 400');
+var tHp0 = titan.hp;
+var hitS = titan.takeDamage(100);
+assert(hitS === 'shield', 'shield 机制命中返回 shield');
+assert(titan.shield === 300 && titan.hp === tHp0, '扣盾不扣血 (shield 400→' + titan.shield + ', hp 不变)');
+// 盾吸收溢出不穿血(盾 50 挨 100 → 盾归 0,溢出 50 不扣 hp)
+var titan2 = new G.Entities.Alien('boss-titan', G.Config.WIDTH / 2, 200);
+titan2.shield = 50;
+var hitP = titan2.takeDamage(100);
+assert(titan2.shield === 0 && titan2.hp === titan2.maxHp, '盾吸收溢出不穿血 (shield→0, hp 不变, hit=' + hitP + ')');
+// absorb 机制(crystall):hp<maxHp 时 30% 概率吸收回血,返回 'absorb'
+var cryst = new G.Entities.Alien('boss-crystall', G.Config.WIDTH / 2, 200);
+cryst.hp = cryst.maxHp - 50;   // 受伤态(满足 hp<maxHp 才可吸收)
+var origRandom = Math.random;
+Math.random = function () { return 0.1; };   // <0.3 强制触发吸收
+var hitA = cryst.takeDamage(10);
+Math.random = origRandom;       // 立即复位,避免污染后续用例
+assert(hitA === 'absorb', 'absorb 机制命中返回 absorb (hit=' + hitA + ')');
+assert(cryst.hp > cryst.maxHp - 50, '吸收回血 (hp ' + (cryst.maxHp - 50) + ' → ' + cryst.hp + ')');
+// shield 阶段激活:_onBossStage 阶段2/3 补满护盾(护盾在时无法受伤,需先打破)
+Game.startGame();
+var stBoss = new G.Entities.Alien('boss-titan', G.Config.WIDTH / 2, 200);
+stBoss.shield = 0; stBoss.bossStage = 1;
+Game._onBossStage(stBoss, 2);
+assert(stBoss.shield === stBoss.maxShield, '阶段2 激活护盾回满 (shield→' + stBoss.shield + ')');
+
+console.log('\n[25] v0.11 wave 机制 — 冲击波弹膨胀衰减');
+assert(G.Config.ALIENS['boss-maw'].fire.stages[2].pattern === 'wave', 'maw 阶段2 用 wave 冲击波弹');
+// expand 标记的敌弹:update 后 radius 增大(限 40 上限)、速度衰减
+var waveEb = new G.Entities.EnemyBullet(360, 500, 100, 0, '#ff5d8f', 'ring', true);
+waveEb.expand = true;
+var r0 = waveEb.radius, v0 = waveEb.vx;
+waveEb.update(0.5);
+assert(waveEb.radius > r0, '冲击波弹膨胀 (radius ' + r0.toFixed(1) + ' → ' + waveEb.radius.toFixed(1) + ')');
+assert(waveEb.vx < v0, '冲击波弹减速衰减 (vx ' + v0.toFixed(1) + ' → ' + waveEb.vx.toFixed(1) + ')');
+assert(waveEb.radius <= 40, '膨胀有上限 (radius=' + waveEb.radius.toFixed(1) + ' ≤ 40)');
 
 console.log('\n==============================');
 console.log('结果: ' + pass + ' 通过 / ' + fail + ' 失败');
