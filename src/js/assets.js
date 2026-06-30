@@ -24,7 +24,10 @@
            't11','t12','t13','t14','t15','t16','t17','t18','t19','t20',
            'bg',
            'bullet1','bullet2','bullet3','bullet4','bullet5',
-           'bullet-ice','bullet-fire','bullet-bolt','bullet-laser'],
+           'bullet-ice','bullet-fire','bullet-bolt','bullet-laser',
+           'explosion',                                                            // v0.10.11:爆炸特效
+           'ebullet-aimed','ebullet-ring','ebullet-boss','enemy-bullet',        // v0.10.11:敌弹(aimed直射/ring环射/boss重弹;spiral复用enemy-bullet)
+           'powerup-ice','powerup-fire','powerup-bolt','powerup-laser','powerup-multi2'],  // v0.10.11:技能胶囊(双/三/四发共用 multi2 底图+程序画数字)
 
     init: function () {
       var self = this;

@@ -80,7 +80,7 @@
       t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff', behavior: 'blink',   // 受击概率闪现回避
             fire: { pattern: 'spiral', every: 0.7, count: 2, spiralStep: 0.5, speed: 240, telegraph: 0 } },  // 闪现时双臂慢螺旋
       t5: { name: '精英',   tier: 5, hp: 20,  score: 300,  coin: 60,  radius: 40, speed: 60,  spawnWeight: 5,  color: '#ff8a3d', behavior: 'spiral' },    // 螺旋移动 + 周期冲刺
-      t6: { name: 'Boss',   tier: 6, hp: 200, score: 1500, coin: 300, radius: 115, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null, boss: true,   // 固定位 + 三阶段弹幕(v0.10.5 加血加大)
+      t6: { name: 'Boss',   tier: 6, hp: 200, score: 1500, coin: 300, radius: 115, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null, boss: true, bossVisScale: 1.88,   // 固定位 + 三阶段弹幕(v0.10.11 visScale 占屏 3/5)
             fire: { stages: {
               1: { pattern: 'aimed',  every: 2.2, count: 3, spread: 0.22, speed: 300, telegraph: 0.5 },
               2: { pattern: 'spiral', every: 0.22, count: 3, spiralStep: 0.4, speed: 270, telegraph: 0 },
@@ -96,13 +96,13 @@
       t7: { name: '撕裂者', tier: 7, hp: 28,  score: 400,  coin: 70,  radius: 30, speed: 64,  spawnWeight: 3,  color: '#ff4d6d', behavior: 'dash' },      // 预警→锁定方向直线突进(可读可躲)
       t8: { name: '守卫者', tier: 7, hp: 40,  score: 500,  coin: 90,  radius: 32, speed: 46,  spawnWeight: 3,  color: '#ff8c42', behavior: 'gunner',           // 周期朝飞船发射瞄准敌弹
             fire: { pattern: 'aimed', every: 2.6, count: 3, spread: 0.24, speed: 320, telegraph: 0.55 } },
-      t9: { name: '钢铁巨像', tier: 8, hp: 500, score: 4000, coin: 600, radius: 135, speed: 30, spawnWeight: 0, color: '#9fb4c8', behavior: null, boss: true,   // 中 Boss·固定位三阶段弹幕(v0.10.5 加血加大)
+      t9: { name: '钢铁巨像', tier: 8, hp: 500, score: 4000, coin: 600, radius: 135, speed: 30, spawnWeight: 0, color: '#9fb4c8', behavior: null, boss: true, bossVisScale: 1.60,   // 中 Boss·固定位三阶段弹幕(v0.10.11 visScale 占屏 3/5)
             fire: { stages: {
               1: { pattern: 'aimed',  every: 1.8, count: 3, spread: 0.20, speed: 330, telegraph: 0.45 },
               2: { pattern: 'spiral', every: 0.16, count: 3, spiralStep: 0.34, speed: 280, telegraph: 0 },
               3: { pattern: 'ring',    every: 2.2, count: 18, speed: 250, telegraph: 0 },
             } } },
-      t10: { name: '虚空吞噬者', tier: 9, hp: 1200, score: 12000, coin: 1500, radius: 155, speed: 26, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true,   // 终 Boss·固定位三阶段密集弹幕 + 召唤(v0.10.5 加血加大)
+      t10: { name: '虚空吞噬者', tier: 9, hp: 1200, score: 12000, coin: 1500, radius: 155, speed: 26, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true, bossVisScale: 1.39,   // 终 Boss·固定位三阶段密集弹幕 + 召唤(v0.10.11 visScale 占屏 3/5)
             summonType: 't2', summonCount: 3,     // 阶段≥2 召唤飞翼(沿用 _bossSummon,override 全局 summonType/Count)
             fire: { stages: {
               1: { pattern: 'spiral', every: 0.13, count: 4, spiralStep: 0.28, speed: 300, telegraph: 0 },   // 四臂螺旋
@@ -153,7 +153,7 @@
       spawnIntervalBase: 0.85,   // 初始刷新间隔
       spawnIntervalMin: 0.28,    // 最快刷新间隔
       spawnIntervalDecay: 0.92,  // 每档刷新间隔衰减
-      bossEveryKills: 60,        // 每 N 击杀触发 Boss
+      bossEveryKills: 25,        // v0.10.11:每 N 击杀触发 Boss(60→25,让 t6/t9/t10 三个 Boss 频繁轮换,不再老同一个)
       bossAlertDuration: 4.0,    // v0.10.7:Boss 入场前警报持续秒(3-4s 营造压迫感,期间 Boss 不入场)
       maxAliensOnScreen: 26,
       // v0.8:Boss 轮换 —— 每个触发点按序循环 t6→t9→t10→t6…,避免单一 Boss。

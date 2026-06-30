@@ -69,6 +69,56 @@
     return c;
   }
 
+  // v0.10.11:敌弹贴图预渲染缓存(按攻击方式选图)。弹头朝下,运行时旋转对齐飞行方向。
+  //   pattern→贴图:aimed→ebullet-aimed(直射)/ spiral→enemy-bullet(流弹)/ ring→ebullet-ring(能量球)/ boss→ebullet-boss。
+  //   缺失返回 null(退回矢量菱形)。染色:用 globalCompositeOperation='source-atop' 叠怪色染中性弹体。
+  var _eBulletTexCache = {};
+  function getEBulletTex(key) {
+    if (_eBulletTexCache[key]) return _eBulletTexCache[key];
+    if (typeof Image === 'undefined' || !G.Assets) return null;
+    var img = G.Assets.get(key);
+    if (!img) return null;
+    var w = img.naturalWidth || 256, h = img.naturalHeight || 256;
+    var SZ = 96;
+    var c = document.createElement('canvas'); c.width = SZ; c.height = SZ;
+    var cx = c.getContext('2d');
+    var s = SZ / Math.max(w, h);
+    cx.drawImage(img, (SZ - w * s) / 2, (SZ - h * s) / 2, w * s, h * s);
+    _eBulletTexCache[key] = c;
+    return c;
+  }
+  // 按 pattern+boss 选贴图 key
+  function ebulletKey(b) {
+    if (b.isBoss) return 'ebullet-boss';
+    if (b.pattern === 'ring') return 'ebullet-ring';
+    if (b.pattern === 'spiral') return 'enemy-bullet';
+    return 'ebullet-aimed';
+  }
+
+  // v0.10.11:爆炸贴图(直接取原图,同屏爆炸不多无需预缩存)。
+  function getExplosionTex() {
+    if (typeof Image === 'undefined' || !G.Assets) return null;
+    return G.Assets.get('explosion');
+  }
+
+  // v0.10.11:技能胶囊贴图缓存(按 fx 取;散射 multi2/3/4 共用 powerup-multi2 底图)。
+  var _powerupTexCache = {};
+  function getPowerUpTex(fx) {
+    if (_powerupTexCache[fx]) return _powerupTexCache[fx];
+    if (typeof Image === 'undefined' || !G.Assets) return null;
+    var key = (fx === 'multi') ? 'powerup-multi2' : ('powerup-' + fx);
+    var img = G.Assets.get(key);
+    if (!img) return null;
+    var w = img.naturalWidth || 256, h = img.naturalHeight || 256;
+    var SZ = 128;
+    var c = document.createElement('canvas'); c.width = SZ; c.height = SZ;
+    var cx = c.getContext('2d');
+    var s = SZ / Math.max(w, h);
+    cx.drawImage(img, (SZ - w * s) / 2, (SZ - h * s) / 2, w * s, h * s);
+    _powerupTexCache[fx] = c;
+    return c;
+  }
+
   // v0.10.7:特效弹细节叠加层 —— 画在贴图/矢量弹头之上,给冰/火/电/激光加可辨识的动态细节。
   //   用 Date.now() 驱动旋转/脉动(workflow 禁用 Math.random 以外的随机源不适用于此处,Date.now 可用)。
   function _bulletFxLayer(ctx, b, fx, color, sz) {
@@ -603,8 +653,9 @@
     alien: function (ctx, a) {
       var def = a.def, r = def.radius, flash = a.hitFlash > 0;
       var wob = a.wob || 0;
-      // v0.10.7:Boss 渲染放大(碰撞半径 def.radius 不变;visScale 仅放大视觉,更有压迫感)
-      if (def.boss) r = r * (G.Config.BOSS.bossScale || 1);
+      // v0.10.7/v0.10.11:Boss 渲染放大(碰撞半径 def.radius 不变;visScale 仅放大视觉)。
+      //   v0.10.11:每个 Boss 独立 bossVisScale,让各 Boss 都约占屏 3/5(直径≈432)。
+      if (def.boss) r = r * (def.bossVisScale || G.Config.BOSS.bossScale || 1);
 
       ctx.save();
       ctx.translate(a.x, a.y);
@@ -1282,6 +1333,7 @@
     //   发光能量菱形核 + 拖尾光带(加色混合)。
     enemyBullet: function (ctx, b) {
       ctx.save();
+      // 拖尾
       if (b.trail.length > 1) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.4; ctx.lineCap = 'round';
@@ -1292,8 +1344,33 @@
         ctx.globalAlpha = 1;
       }
 
-      // 矢量能量核(菱形 + 径向辉光 + 白心)
       var br = b.radius;
+      // v0.10.11:贴图敌弹(按攻击方式)。弹头朝下原图,旋转对齐飞行方向;按怪色染色。
+      var bkey = ebulletKey(b);
+      var etex = getEBulletTex(bkey);
+      if (etex) {
+        var bs = br * (b.isBoss ? 7.2 : 5.4);   // Boss 重弹更大
+        // 外辉光(怪色)
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, b.color, b.x, b.y, bs * 0.5, 0.4);
+        // 贴图本体:旋转对齐飞行方向(贴图朝下=+y 即 atan2 后 +π/2)
+        var ang = Math.atan2(b.vy, b.vx) - Math.PI / 2;   // 朝下原图对齐飞行方向
+        ctx.save();
+        ctx.translate(b.x, b.y); ctx.rotate(ang);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(etex, -bs / 2, -bs / 2, bs, bs);
+        // 染色:怪色叠到弹体(source-atop 只染不透明像素,保留高光)
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = b.color;
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect(-bs / 2, -bs / 2, bs, bs);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        ctx.restore();
+        return;
+      }
+
+      // 矢量退回(贴图缺失):菱形 + 径向辉光 + 白心
       ctx.globalCompositeOperation = 'lighter';
       drawGlow(ctx, b.color, b.x, b.y, br * 2.6, 0.5);
       ctx.globalCompositeOperation = 'source-over';
@@ -1350,19 +1427,21 @@
       ];
       var ld = LVL[wlvl - 1];
       var isLv5 = wlvl === 5;
-      var glowColor = fx ? b.color : ld.glow;   // 特效弹用技能色;普通弹用等级固定色(不被污染)
+      // v0.10.11:普通弹光晕统一淡蓝白(不再 5 色堆叠致乱),靠贴图自身配色+尺寸区分等级;
+      //           特效弹仍用技能色。Lv5 保留双层强化但更克制。
+      var glowColor = fx ? b.color : (isLv5 ? ld.glow : '#aee9ff');
       var br = b.radius;
       var fxScale = fx ? 1.25 : 1.0;
       var bsizeScale = ld.scale * fxScale;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
 
-      // 拖尾:等级越高越粗;特效弹按类型差异化
+      // 拖尾:统一细+低 alpha(普通弹不再随等级变浓,避免密集时糊成一片);特效弹按类型差异化
       if (b.trail.length > 1) {
         ctx.strokeStyle = glowColor;
-        ctx.lineWidth = br * (fx === 'laser' ? 3.6 : fx === 'fire' ? 2.8 : fx ? 2.4 : (1.6 + (wlvl - 1) * 0.25));
+        ctx.lineWidth = br * (fx === 'laser' ? 3.6 : fx === 'fire' ? 2.8 : fx ? 2.4 : 1.5);
         ctx.lineCap = 'round';
-        ctx.globalAlpha = fx === 'fire' ? 0.42 : (fx === 'laser' ? 0.55 : 0.28 + (wlvl - 1) * 0.04);
+        ctx.globalAlpha = fx === 'fire' ? 0.42 : (fx === 'laser' ? 0.55 : fx ? 0.3 : 0.22);
         ctx.beginPath();
         ctx.moveTo(b.trail[0].x, b.trail[0].y);
         if (fx === 'bolt') {
@@ -1383,8 +1462,8 @@
       var btex = getBulletTex(bkey);
       if (btex) {
         var bs = br * 6.0 * bsizeScale;
-        // Lv5 双层辉光强化(Boss 级压迫感);其余单层
-        drawGlow(ctx, glowColor, b.x, b.y, bs * (isLv5 ? 0.72 : 0.5), isLv5 ? 0.42 : 0.3);
+        // Lv5 双层辉光(外等级色+内白);普通弹单层淡蓝白辉光(克制,不喧宾夺主)
+        drawGlow(ctx, glowColor, b.x, b.y, bs * (isLv5 ? 0.72 : 0.42), isLv5 ? 0.42 : 0.26);
         if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.32, 0.4);
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(btex, b.x - bs / 2, b.y - bs / 2, bs, bs);
@@ -1415,6 +1494,30 @@
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = p.life / p.maxLife;
       ctx.drawImage(glow(p.color), p.x - p.r * 2, p.y - p.r * 2, p.r * 4, p.r * 4);
+      ctx.restore();
+    },
+
+    // v0.10.11:爆炸特效(贴图放大→淡出 + 怪色辉光)。与粒子碎片并行,大爆裂质感。
+    explosion: function (ctx, e) {
+      var tex = getExplosionTex();
+      var prog = 1 - e.life / e.maxLife;            // 0→1 进度
+      var sz = e.size * (1 + prog * 0.6);           // 放大到 1.6×
+      var alpha = e.life / e.maxLife;               // 淡出
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha;
+      // 怪色外辉光(融合爆炸色与怪色)
+      drawGlow(ctx, e.color, e.x, e.y, sz * 0.6, 0.5);
+      if (tex) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(tex, e.x - sz / 2, e.y - sz / 2, sz, sz);
+      } else {
+        // 矢量退回:爆裂球
+        var g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, sz / 2);
+        g.addColorStop(0, '#fff'); g.addColorStop(0.4, e.color); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(e.x, e.y, sz / 2, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.restore();
     },
 
@@ -1451,7 +1554,7 @@
 
     // —— 技能胶囊(v0.5):技能色光晕 + 旋转六边形外壳 + 中心技能标识 ——
     powerUp: function (ctx, p) {
-      var col = p.def.color, r = p.r, t = (p.t || 0);
+      var col = p.def.color, r = p.r, t = (p.t || 0), fx = p.def.fx;
       ctx.save();
       ctx.translate(p.x, p.y);
       // 外光晕(发光精灵)
@@ -1459,8 +1562,30 @@
       drawGlow(ctx, col, 0, 0, r * 2.6, 0.55);
       ctx.globalCompositeOperation = 'source-over';
 
-      // 旋转六边形外壳(脉动)
-      var pulse = 1 + Math.sin(t * 5) * 0.08;
+      // v0.10.11:优先用贴图(按 fx;散射共用 multi2 底图)。缺失退回下面矢量六边形。
+      var ptex = getPowerUpTex(fx);
+      if (ptex) {
+        var pulse = 1 + Math.sin(t * 5) * 0.08;
+        var sz = r * 2.2 * pulse;
+        ctx.save();
+        ctx.rotate(t * 0.6);                      // 缓慢自转
+        ctx.drawImage(ptex, -sz / 2, -sz / 2, sz, sz);
+        ctx.restore();
+        // 散射系(multi2/3/4):中心程序画数字区分等级
+        if (fx === 'multi') {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold ' + Math.round(r * 1.2) + 'px Arial';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.shadowColor = col; ctx.shadowBlur = 8;
+          ctx.fillText(String(p.def.spread || 2), 0, 2);
+          ctx.shadowBlur = 0;
+        }
+        ctx.restore();
+        return;
+      }
+
+      // 矢量退回:旋转六边形外壳(脉动)+ 中心符号
+      var pulse2 = 1 + Math.sin(t * 5) * 0.08;
       ctx.rotate(t * 0.8);
       ctx.lineWidth = 2;
       ctx.strokeStyle = lighten(col, 0.2);
@@ -1468,18 +1593,17 @@
       ctx.beginPath();
       for (var i = 0; i <= 6; i++) {
         var ang = (i / 6) * Math.PI * 2 - Math.PI / 2;
-        var rr = r * pulse;
+        var rr = r * pulse2;
         var px = Math.cos(ang) * rr, py = Math.sin(ang) * rr;
         i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
       }
       ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.rotate(-t * 0.8);
 
-      // 中心技能标识符号(随技能变体)
       ctx.fillStyle = '#fff';
       ctx.font = 'bold ' + Math.round(r * 1.1) + 'px Arial';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      var sym = { ice: '❄', fire: '🔥', bolt: '⚡', laser: '✦', multi: '◎' }[p.def.fx] || '★';
+      var sym = { ice: '❄', fire: '🔥', bolt: '⚡', laser: '✦', multi: '◎' }[fx] || '★';
       ctx.fillText(sym, 0, 1);
       ctx.restore();
     },

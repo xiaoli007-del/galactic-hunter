@@ -30,7 +30,7 @@
     _lbReturnState: 'menu', // 排行榜返回的目标状态(从菜单/结算进入则原路返回)
 
     ship: null,
-    bullets: [], aliens: [], particles: [], coinsArr: [], texts: [], powerups: [],
+    bullets: [], aliens: [], particles: [], explosions: [], coinsArr: [], texts: [], powerups: [],
     enemyBullets: [],         // v0.8:新精英/Boss 发射的敌弹(与玩家弹分库,碰撞走 ship.takeHit)
 
     activeSkill: null,        // v0.5:当前生效技能(SKILLS 键);持久直到拾取下一个
@@ -168,7 +168,7 @@
       this.state = STATE.MENU;
       Snd && Snd.bgmPause();   // v0.10.8:回菜单暂停背景音乐
       this.bullets.length = 0; this.aliens.length = 0;
-      this.enemyBullets.length = 0; this.particles.length = 0;
+      this.enemyBullets.length = 0; this.particles.length = 0; this.explosions.length = 0;
       this.coinsArr.length = 0; this.texts.length = 0; this.powerups.length = 0;
       P.pointer.down = false; P.pointer.justPressed = false;
     },
@@ -458,6 +458,7 @@
       for (var i = 0; i < this.bullets.length; i++) this.bullets[i].update(dt);
       for (var j = 0; j < this.aliens.length; j++) this.aliens[j].update(dt);
       for (var k = 0; k < this.particles.length; k++) this.particles[k].update(dt);
+      for (var e = 0; e < this.explosions.length; e++) this.explosions[e].update(dt);
       for (var eb = 0; eb < this.enemyBullets.length; eb++) this.enemyBullets[eb].update(dt);  // v0.8
       for (var m = 0; m < this.texts.length; m++) this.texts[m].update(dt);
       for (var n = 0; n < this.coinsArr.length; n++) this.coinsArr[n].update(dt, this.ship);
@@ -653,38 +654,43 @@
       var col = alien.def.color;
       var sp = f.speed;
       var n = f.count;
+      var pat = f.pattern;
+      var boss = !!alien.isBoss;          // v0.10.11:Boss 弹标记
       if (this.enemyBullets.length >= C.ENEMY_BULLET.maxOnScreen) return;
       Snd && Snd.play('enemyFire');
-      if (f.pattern === 'aimed') {
+      if (pat === 'aimed') {
         var baseA = alien._aimAngle != null ? alien._aimAngle : alien._angleToShip();
         for (var i = 0; i < n; i++) {
           var off = n === 1 ? 0 : (i / (n - 1) - 0.5) * (f.spread || 0.2);
-          this._spawnEBullet(alien, baseA + off, sp, col);
+          this._spawnEBullet(alien, baseA + off, sp, col, pat, boss);
         }
-      } else if (f.pattern === 'spiral') {
+      } else if (pat === 'spiral') {
         for (var s = 0; s < n; s++) {
           var a = alien.fireAngle + (s / n) * Math.PI * 2;
-          this._spawnEBullet(alien, a, sp, col);
+          this._spawnEBullet(alien, a, sp, col, pat, boss);
         }
         alien.fireAngle += f.spiralStep || 0.3;
-      } else if (f.pattern === 'ring') {
+      } else if (pat === 'ring') {
         for (var r = 0; r < n; r++) {
           var ra = alien.fireAngle + (r / n) * Math.PI * 2;
-          this._spawnEBullet(alien, ra, sp, col);
+          this._spawnEBullet(alien, ra, sp, col, pat, boss);
         }
         alien.fireAngle += 0.3;   // 微漂使每环错开
       }
     },
     // 生成一发敌弹(从怪物边缘出膛,避免在自身碰撞圈内生成)
-    _spawnEBullet: function (alien, ang, sp, col) {
+    _spawnEBullet: function (alien, ang, sp, col, pattern, boss) {
       if (this.enemyBullets.length >= C.ENEMY_BULLET.maxOnScreen) return;
       var er = alien.radius + 4;
       this.enemyBullets.push(new Ent.EnemyBullet(
         alien.x + Math.cos(ang) * er, alien.y + Math.sin(ang) * er,
-        Math.cos(ang) * sp, Math.sin(ang) * sp, col));
+        Math.cos(ang) * sp, Math.sin(ang) * sp, col, pattern, boss));
     },
 
     explode: function (x, y, color, n) {
+      // v0.10.11:贴图爆炸(放大淡出)+ 粒子碎片飞溅(保留)
+      var sz = n >= 30 ? 160 : (n >= 14 ? 90 : 60);   // Boss 级 40 粒→大爆炸;普通 14→中;小 8→小
+      this.explosions.push(new Ent.Explosion(x, y, sz, color, 0.42));
       for (var i = 0; i < n; i++) {
         var ang = Math.random() * Math.PI * 2;
         var sp = E.rand(60, 280);
@@ -702,6 +708,7 @@
       this.powerups = this.powerups.filter(function (p) { return !p.dead; });
       this.particles = this.particles.filter(function (p) { return !p.dead; });
       if (this.particles.length > 240) this.particles.splice(0, this.particles.length - 240);
+      this.explosions = this.explosions.filter(function (x) { return !x.dead; });
       this.texts = this.texts.filter(function (t) { return !t.dead; });
       var self = this;
       this.coinsArr = this.coinsArr.filter(function (c) {
@@ -829,6 +836,7 @@
       for (var eb3 = 0; eb3 < this.enemyBullets.length; eb3++) this.enemyBullets[eb3].draw(ctx);  // v0.8
       for (var j = 0; j < this.bullets.length; j++) this.bullets[j].draw(ctx);
       for (var k = 0; k < this.particles.length; k++) this.particles[k].draw(ctx);
+      for (var e = 0; e < this.explosions.length; e++) this.explosions[e].draw(ctx);
       for (var m = 0; m < this.coinsArr.length; m++) this.coinsArr[m].draw(ctx);
       for (var n = 0; n < this.texts.length; n++) this.texts[n].draw(ctx);
     },

@@ -401,14 +401,25 @@
   };
   Particle.prototype.draw = function (ctx) { G.Render.particle(ctx, this); };
 
+  // v0.10.11:爆炸特效(贴图 + 放大→淡出)。与粒子碎片并行,提供大爆裂质感。
+  //   size 为初始半径(像素),life 秒;渲染时从 size 放大到 size*1.6 并淡出。
+  function Explosion(x, y, size, color, life) {
+    this.x = x; this.y = y; this.size = size; this.color = color || '#ffb84d';
+    this.life = life || 0.4; this.maxLife = this.life; this.dead = false;
+  }
+  Explosion.prototype.update = function (dt) { this.life -= dt; if (this.life <= 0) this.dead = true; };
+  Explosion.prototype.draw = function (ctx) { G.Render.explosion(ctx, this); };
+
   // —— 敌弹(v0.8):新精英/Boss 发射的子弹。直线飞行,出界回收;命中飞船走 takeHit 同路径 ——
   //   伤害=1(与本体撞击一致:消一格护盾或扣 1 hp),护盾/反射/无敌帧自动兼容。
-  function EnemyBullet(x, y, vx, vy, color) {
+  function EnemyBullet(x, y, vx, vy, color, pattern, isBoss) {
     this.id = newId();
     this.x = x; this.y = y; this.vx = vx; this.vy = vy;
     this.radius = G.Config.ENEMY_BULLET.radius;
     this.color = color || G.Config.ENEMY_BULLET.color;
     this.damage = G.Config.ENEMY_BULLET.damage;
+    this.pattern = pattern || 'aimed';   // v0.10.11:aimed/spiral/ring,渲染按此选贴图
+    this.isBoss = !!isBoss;              // v0.10.11:Boss 弹用重弹贴图
     this.trail = [];
     this.dead = false;
   }
@@ -485,6 +496,7 @@
   Entities.Bullet = Bullet;
   Entities.Alien = Alien;
   Entities.Particle = Particle;
+  Entities.Explosion = Explosion;
   Entities.EnemyBullet = EnemyBullet;
   Entities.Coin = Coin;
   Entities.PowerUp = PowerUp;
