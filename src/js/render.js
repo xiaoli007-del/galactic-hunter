@@ -34,6 +34,41 @@
     return c;
   }
 
+  // v0.10.10:怪物贴图预渲染缓存 —— alien() 原每帧每怪用 ctx.filter(saturate+contrast+brightness)
+  //   做像素级运算,是渲染头号瓶颈(实测 alien 2.79ms/次,Boss 放大后更慢,致卡顿)。
+  //   首次取用时把原图带 filter 画到离屏 canvas 缓存一次,运行时直接 drawImage(无 filter),大幅提速。
+  //   flash 增亮改用 globalCompositeOperation='lighter'+alpha(lighter 叠加即增亮,无需每帧 filter)。
+  var _alienTexCache = {};
+  function getAlienTex(type) {
+    if (_alienTexCache[type]) return _alienTexCache[type];
+    if (typeof Image === 'undefined' || !G.Assets) return null;   // node smoke 环境
+    var img = G.Assets.get(type);
+    if (!img) return null;
+    var w = img.naturalWidth || 256, h = img.naturalHeight || 256;
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var cx = c.getContext('2d');
+    cx.filter = 'saturate(1.55) contrast(1.2) brightness(1.05)';
+    cx.drawImage(img, 0, 0);
+    _alienTexCache[type] = c;
+    return c;
+  }
+
+  // v0.10.10:飞船贴图预渲染缓存(同 alien 思路),去掉 ship() 每帧 ctx.filter。
+  var _shipTexCache = {};
+  function getShipTex(lvl) {
+    if (_shipTexCache[lvl]) return _shipTexCache[lvl];
+    if (typeof Image === 'undefined' || !G.Assets) return null;
+    var img = G.Assets.get('ship' + lvl);
+    if (!img) return null;
+    var w = img.naturalWidth || 256, h = img.naturalHeight || 256;
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var cx = c.getContext('2d');
+    cx.filter = 'saturate(1.5) contrast(1.18) brightness(1.05)';
+    cx.drawImage(img, 0, 0);
+    _shipTexCache[lvl] = c;
+    return c;
+  }
+
   // v0.10.7:特效弹细节叠加层 —— 画在贴图/矢量弹头之上,给冰/火/电/激光加可辨识的动态细节。
   //   用 Date.now() 驱动旋转/脉动(workflow 禁用 Math.random 以外的随机源不适用于此处,Date.now 可用)。
   function _bulletFxLayer(ctx, b, fx, color, sz) {
@@ -317,7 +352,7 @@
       // v0.10.1:优先用 Kenney 贴图(CC0,渐进增强)。就绪则画贴图 + 引擎尾焰光晕;
       //   未就绪/缺失自动退回下面的程序化模块化组装,缺图不影响运行。
       //   每级一张 ship{lvl}.png = 升级外观变化;贴图按"船头朝上"归一(竖图直接,横图旋转 -90°)。
-      var tex = G.Assets && G.Assets.get('ship' + lvl);
+      var tex = getShipTex(lvl);   // v0.10.10:预渲染缓存(带 filter 已算一次),去掉每帧 ctx.filter
       if (tex) {
         ctx.save();
         ctx.translate(ship.x, ship.y);
@@ -329,16 +364,11 @@
         ctx.globalCompositeOperation = 'source-over';
         var visScale = 1 + (lvl - 1) * 0.06;   // 逐级放大(与程序化一致,碰撞半径不变)
         var size = r * 2.5 * visScale;
-        // v0.10.3:色彩强化 — AI 生图偏淡/透明,提饱和+对比让金属装甲更鲜亮厚重(filter 仅作用于贴图)
-        ctx.filter = 'saturate(1.5) contrast(1.18) brightness(1.05)';
-        ctx.drawImage(tex, -size / 2, -size / 2, size, size);
-        ctx.filter = 'none';
-        if (flash) {   // 受击增亮
+        ctx.drawImage(tex, -size / 2, -size / 2, size, size);   // v0.10.10:缓存已带 filter,直接画
+        if (flash) {   // 受击增亮(lighter 叠加即增亮,无需每帧 filter brightness)
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = 0.55;
-          ctx.filter = 'brightness(1.4)';
           ctx.drawImage(tex, -size / 2, -size / 2, size, size);
-          ctx.filter = 'none';
           ctx.globalCompositeOperation = 'source-over';
           ctx.globalAlpha = 1;
         }
@@ -585,23 +615,18 @@
       drawGlow(ctx, def.color, 0, 0, r * 1.9, 0.26);
       ctx.globalCompositeOperation = 'source-over';
 
-      // v0.10.3:优先用 AI 生图贴图(按 a.type 取 t1-t23.png;缺失退回下面程序化矢量)。
+      // v0.10.3/v0.10.10:优先用 AI 生图贴图(按 a.type 取 t1-t23.png;缺失退回下面程序化矢量)。
       //   AI 生图炮口已朝下(敌从上方下压),不旋转直接画。
-      //   怪比飞船小,贴图按 def.radius 等比;受击闪白叠加。
-      var atex = G.Assets && G.Assets.get(a.type);
+      //   v0.10.10:用预渲染缓存(getAlienTex,带 filter 已算一次),运行时纯 drawImage,去掉每帧 ctx.filter。
+      var atex = getAlienTex(a.type);
       if (atex) {
         var asize = r * 2.6;
         ctx.save();
-        // v0.10.3:色彩强化 — 提饱和+对比,消除 AI 生图的淡/透明感,金属装甲更鲜亮
-        ctx.filter = 'saturate(1.55) contrast(1.2) brightness(1.05)';
         ctx.drawImage(atex, -asize / 2, -asize / 2, asize, asize);
-        ctx.filter = 'none';
         if (flash) {
-          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalCompositeOperation = 'lighter';   // lighter 叠加即增亮,无需每帧 filter brightness
           ctx.globalAlpha = 0.55;
-          ctx.filter = 'brightness(1.4)';
           ctx.drawImage(atex, -asize / 2, -asize / 2, asize, asize);
-          ctx.filter = 'none';
           ctx.globalCompositeOperation = 'source-over';
           ctx.globalAlpha = 1;
         }
