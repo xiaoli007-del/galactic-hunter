@@ -17,14 +17,14 @@
   var SHIP_TEX_ROT = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
   // v0.10.5:子弹贴图预缩存 —— 子弹高频大量,每发 drawImage 原图(1024px)会掉帧。
-  //   首次取用时把原图缩成 64px 离屏 canvas 缓存,运行时只画小图。缺失返回 null(退回矢量)。
+  //   首次取用时把原图缩成 96px 离屏 canvas 缓存,运行时只画小图。缺失返回 null(退回矢量)。
   var _bulletCache = {};
   function getBulletTex(key) {
     if (_bulletCache[key]) return _bulletCache[key];
     if (typeof Image === 'undefined' || !G.Assets) return null;   // node smoke 环境
     var img = G.Assets.get(key);
     if (!img) return null;
-    var SZ = 64;
+    var SZ = 96;
     var c = document.createElement('canvas'); c.width = SZ; c.height = SZ;
     var cx = c.getContext('2d');
     var s = SZ / Math.max(img.naturalWidth, img.naturalHeight);
@@ -1255,7 +1255,7 @@
       // 拖尾效果
       if (b.trail.length > 1) {
         ctx.strokeStyle = b.color;
-        ctx.lineWidth = b.radius * (fx === 'laser' ? 3.0 : 1.4);
+        ctx.lineWidth = b.radius * (fx === 'laser' ? 3.4 : fx ? 2.4 : 2.0);  // v0.10.6:拖尾加粗,特效弹更粗
         ctx.lineCap = 'round';
         ctx.globalAlpha = fx === 'fire' ? 0.4 : (fx === 'laser' ? 0.5 : 0.28);
         ctx.beginPath();
@@ -1278,11 +1278,13 @@
       //   预缩存小图(_bulletCache)避免每发 drawImage 大图掉帧;缺失退回下面矢量弹头。
       var br = b.radius;
       var wlvl = b.weaponLevel || 1;
-      var bsizeScale = 1 + (wlvl - 1) * 0.08;          // 武器等级缩放(高等级子弹更大)
+      var lvlScale = 1 + (wlvl - 1) * 0.15;             // 等级放大:Lv1=1.0 → Lv5=1.6(升级感明显)
+      var fxScale = fx ? 1.25 : 1.0;                    // 特效弹(冰/火/电/激光)更醒目
+      var bsizeScale = lvlScale * fxScale;
       var bkey = fx ? ('bullet-' + fx) : ('bullet' + Math.min(wlvl, 5));
-      var btex = getBulletTex(bkey);                   // 预缩存的离屏小图(64px)
+      var btex = getBulletTex(bkey);                   // 预缩存的离屏小图(96px)
       if (btex) {
-        var bs = br * 4.2 * bsizeScale;                 // 子弹显示尺寸(比半径放大,贴图才有细节)
+        var bs = br * 6.0 * bsizeScale;                 // 显示尺寸放大:贴图细节才看得清(原 4.2→缩成糊方块)
         ctx.globalCompositeOperation = 'lighter';
         drawGlow(ctx, b.color, b.x, b.y, bs * 0.5, 0.3);
         ctx.globalCompositeOperation = 'source-over';
@@ -1291,18 +1293,18 @@
         return;
       }
 
-      // 矢量弹头(发光能量胶囊):激光=粗贯穿柱,其余=椭圆能量核 + 白心(贴图缺失时退回)
+      // 矢量弹头(发光能量胶囊):激光=粗贯穿柱,其余=椭圆能量核 + 白心(贴图缺失时退回;与贴图尺寸同级放大)
       if (fx === 'laser') {
         ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, b.color, b.x, b.y, br * 3.4, 0.5);
+        drawGlow(ctx, b.color, b.x, b.y, br * 4.0, 0.55);
         ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 0.8, br * 2.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 1.0, br * 3.0, 0, 0, Math.PI * 2); ctx.fill();
       } else {
-        drawGlow(ctx, b.color, b.x, b.y, br * 2.6, 0.42);
-        var bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, br * 1.5);
+        drawGlow(ctx, b.color, b.x, b.y, br * 3.2, 0.5);
+        var bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, br * 1.9);
         bg.addColorStop(0, '#fff'); bg.addColorStop(0.5, b.color); bg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = bg;
-        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 0.9, br * 1.7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 1.1, br * 2.1, 0, 0, Math.PI * 2); ctx.fill();
       }
 
       // 技能特效
