@@ -111,6 +111,7 @@
 
     startGame: function () {
       this.state = STATE.PLAYING;
+      Snd && Snd.bgmStart();   // v0.10.8:开始游戏播背景音乐(首次用户交互后允许播放)
       this.score = 0;
       this.battleTime = 0;
       this.spawnTimer = 0;
@@ -145,6 +146,7 @@
     gameOver: function () {
       this.state = STATE.GAMEOVER;
       this.screenFlash = 0.6;
+      Snd && Snd.bgmPause();   // v0.10.8:游戏结束暂停背景音乐
       if (this.score > this.highScore) { this.highScore = this.score; }
       this.submitScore();          // v0.4:本局入榜(0 分不记)
       this.save();
@@ -153,15 +155,18 @@
     // —— 暂停(P/ESC 或暂停按钮)——冻结逻辑但仍渲染世界 + 暂停遮罩 ——
     _pause: function () {
       this.state = STATE.PAUSED;
+      Snd && Snd.bgmPause();   // v0.10.8:暂停时暂停背景音乐
       P.pointer.down = false; P.pointer.justPressed = false;   // 防暂停瞬间的按下被当开火
     },
     _resume: function () {
       this.state = STATE.PLAYING;
+      Snd && Snd.bgmStart();   // v0.10.8:恢复游戏继续播放背景音乐
       P.pointer.down = false; P.pointer.justPressed = false;   // 防继续按钮按下被当开火
     },
     // 放弃本局回主菜单(暂停/结算页用)。清场上残留,避免下次开局前短暂残留。
     returnToMenu: function () {
       this.state = STATE.MENU;
+      Snd && Snd.bgmPause();   // v0.10.8:回菜单暂停背景音乐
       this.bullets.length = 0; this.aliens.length = 0;
       this.enemyBullets.length = 0; this.particles.length = 0;
       this.coinsArr.length = 0; this.texts.length = 0; this.powerups.length = 0;
@@ -867,19 +872,32 @@
       ctx.textBaseline = 'alphabetic';
       ctx.restore();
 
-      // 音效开关(右上角小图标)+ 暂停按钮(其左)
+      // 音效开关 + 暂停按钮 + BGM 开关(右上角)
       var sndOn = P.audio.isEnabled();
       var sbS = 32;
-      var pbX = W - 88, sbX = W - 44, sbY = 8;   // 暂停按钮在音效按钮左侧
+      var pbX = W - 132, mbX = W - 88, sbX = W - 44, sbY = 8;   // 暂停 / 音乐 / 音效 三按钮
       if (this._button(ctx, pbX, sbY, sbS, sbS, '⏸', true, true)) this._pause();
+      // v0.10.8:BGM 开关(🎵 开 / 🎶 关)。独立于音效,持久化。
+      var bgmOn = Snd ? Snd.bgmIsOn() : false;
+      if (this._button(ctx, mbX, sbY, sbS, sbS, bgmOn ? '🎵' : '🎶', true, true)) {
+        if (Snd) { Snd.bgmToggle(); }
+      }
       if (this._button(ctx, sbX, sbY, sbS, sbS, sndOn ? '♪' : '✕', true, true)) {
         P.audio.setEnabled(!sndOn);
+        Snd && Snd.bgmSync();   // v0.10.8:静音状态变化同步 BGM(静音则暂停,解除则恢复)
       }
       if (!sndOn) {  // 静音时图标变暗提示
         ctx.save();
         ctx.fillStyle = 'rgba(255,107,107,0.7)';
         ctx.font = '10px Arial'; ctx.textAlign = 'center';
         ctx.fillText('静音', sbX + sbS / 2, sbY + sbS + 10);
+        ctx.restore();
+      }
+      if (!bgmOn) {  // BGM 关闭时图标变暗提示
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,107,107,0.7)';
+        ctx.font = '10px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('音乐', mbX + sbS / 2, sbY + sbS + 10);
         ctx.restore();
       }
 
