@@ -44,6 +44,10 @@
     _bossIdx: 0,              // v0.8:Boss 轮换序号(t6→t9→t10→t6…);startGame 重置为 0(首 Boss 恒 t6)
     turretTimer: 0,           // v0.10:副炮自动开火计时(按 SHIPS[shipLevel].turretRate 节奏连发)
     bossAlert: 0,             // v0.10.4:Boss 出现警报剩余秒(>0 时渲染 EVA 式红条警报)
+    _bossSpawned: false,      // v0.10.7:本轮 Boss 已触发(警报或在场期间抑制重复触发)
+    _bossPending: false,      // v0.10.7:Boss 警报中、尚未入场(警报结束后才召唤)
+    _bossPendingType: null,   // v0.10.7:待入场的 Boss 类型(pending 期间暂存)
+    _hadBoss: false,          // v0.10.7:上一帧是否有活 Boss(用于死亡下降沿复位 _bossSpawned)
 
     init: function () {
       this.loadSave();
@@ -120,6 +124,11 @@
       this.powerups.length = 0;
       this.enemyBullets.length = 0;         // v0.8:清空场上敌弹
       this._bossIdx = 0;                    // v0.8:Boss 轮换序号归零(首 Boss 恒 t6)
+      this._bossSpawned = false;            // v0.10.7:每局重置 Boss 触发标志
+      this._bossPending = false;            // v0.10.7:每局重置 Boss 警报/待入场状态
+      this._bossPendingType = null;
+      this._hadBoss = false;                // v0.10.7:每局重置 Boss 在场追踪
+      this.bossAlert = 0;                   // v0.10.7:每局重置警报
       this.activeSkill = null;             // v0.5:每局重置技能(开局用武器默认弹道)
       this.turretTimer = 0;               // v0.10:副炮计时归零(每局重置,与主开火解耦)
       this.powerupTimer = G.Config.POWERUP.dropEvery;   // 首个胶囊倒计时
@@ -180,8 +189,9 @@
       ctx.restore();
     },
 
-    // v0.10.4:Boss 出现警报(EVA 式)—— 上下两条红色横条 + 警告字 + 节奏闪烁。
-    //   bossAlert>0 时每帧画;条带做横向扫描动画 + 整体明暗呼吸(8Hz 警报节奏)。
+    // v0.10.4/v0.10.7:Boss 警报(EVA 式)—— 上下红条 + 警告字 + 倒计时。
+    //   bossAlert>0 时每帧画;pending 阶段(Boss 入场前)显示"BOSS 逼近"+ 倒计时秒数,
+    //   非pending(Boss 已在场,调试触发)显示"BOSS 接近"。8Hz 闪烁营造压迫感。
     drawBossAlert: function (ctx) {
       var W = C.WIDTH, H = C.HEIGHT;
       var t = this.time;
@@ -204,12 +214,14 @@
       ctx.fillRect(scanX - 3, 0, 6, barH);
       ctx.fillRect(W - scanX - 3, H - barH, 6, barH);
       ctx.globalCompositeOperation = 'source-over';
-      // 警告文字(顶条内)
+      // 警告文字:pending 阶段显示倒计时(Boss 还没来),否则"接近"
+      var secs = Math.ceil(this.bossAlert);
+      var msg = this._bossPending ? ('⚠  WARNING  ⚠  BOSS 逼近  ' + secs + ' S  ⚠') : '⚠  WARNING  ⚠  BOSS 接近  ⚠';
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255,' + (180 + pulse * 60) + ',' + (180 + pulse * 60) + ',' + (0.8 + pulse * 0.2) + ')';
       ctx.shadowColor = '#ff2030'; ctx.shadowBlur = 16;
       ctx.font = 'bold 26px Arial';
-      ctx.fillText('⚠  WARNING  ⚠  BOSS 接近  ⚠', W / 2, barH / 2 + 9);
+      ctx.fillText(msg, W / 2, barH / 2 + 9);
       ctx.shadowBlur = 0;
       ctx.restore();
     },
@@ -243,13 +255,13 @@
           break;
         }
       }
-      // 调试:按 B 键立即召唤下一个 Boss(检视放大后的 Boss + EVA 警报用)
+      // 调试:按 B 键立即召唤下一个 Boss + 警报(检视放大后的 Boss + EVA 警报用)
       if (P.isKeyJustPressed('b')) {
         var rot2 = C.WAVE.bossRotation;
         var bt = rot2[this._bossIdx % rot2.length];
         this._bossIdx++;
         this.spawnAlien(0, bt);
-        this.bossAlert = 2.2;
+        this.bossAlert = C.WAVE.bossAlertDuration;
         var bDef2 = C.ALIENS[bt];
         this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ ' + bDef2.name + ' 出现', bDef2.color, 38));
         Snd && Snd.play('boss');
@@ -365,19 +377,36 @@
         this.spawnAlien(tier);
         this.spawnTimer = interval;
       }
-      // Boss 触发(v0.8:轮换 t6→t9→t10→t6…,飘字用各 Boss 名与色)
-      if (this.killCount > 0 && this.killCount % C.WAVE.bossEveryKills === 0 && !this._bossSpawned) {
+      // Boss 触发(v0.10.7:警报提前 + 延迟入场 + 单波单 Boss,不堆叠)
+      //   ① 击杀达阈值且当前无 Boss/无 pending → 进入 _bossPending:启动警报(4s),暂不召唤。
+      //   ② 警报期间不召唤 Boss(营造压迫感);bossAlert 归零才 spawnAlien 入场。
+      //   ③ Boss 在场或 pending 期间抑制新触发;Boss 死亡后(_anyBossAlive=false)才复位 _bossSpawned。
+      if (this.killCount > 0 && this.killCount % C.WAVE.bossEveryKills === 0 && !this._bossSpawned && !this._bossPending) {
         var rot = C.WAVE.bossRotation;
-        var bossType = rot[this._bossIdx % rot.length];
+        this._bossPendingType = rot[this._bossIdx % rot.length];
         this._bossIdx++;
-        this.spawnAlien(tier, bossType);
+        this._bossPending = true;
         this._bossSpawned = true;
-        var bDef = C.ALIENS[bossType];
-        this.bossAlert = 2.2;   // v0.10.4:EVA 式红色警报持续 2.2s(红条闪烁 + 警告字)
+        this.bossAlert = C.WAVE.bossAlertDuration;   // v0.10.7:Boss 入场前警报 4s(红条闪烁 + 警告字)
+        Snd && Snd.play('boss');
+      }
+      // 警报结束 → Boss 真正入场(飘字用 Boss 名与色)
+      if (this._bossPending && this.bossAlert <= 0) {
+        var bDef = C.ALIENS[this._bossPendingType];
+        this.spawnAlien(tier, this._bossPendingType);
+        this._bossPending = false;
+        this._bossPendingType = null;
         this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ ' + bDef.name + ' 出现', bDef.color, 38));
         Snd && Snd.play('boss');
       }
-      if (this.killCount % C.WAVE.bossEveryKills !== 0) this._bossSpawned = false;
+      // 当前轮 Boss 击杀完毕(无 pending 且场上无活 Boss)→ 复位 _bossSpawned,允许下一轮触发。
+      //   用 _hadBoss 追踪上一帧是否有活 Boss,只在"有 Boss → 无 Boss"的下降沿复位,
+      //   避免死亡瞬间 killCount 恰好又到阈值时立即重触发(取模判断不可靠,改边沿检测)。
+      var bossAliveNow = this._anyBossAlive();
+      if (this._hadBoss && !bossAliveNow && !this._bossPending) {
+        this._bossSpawned = false;
+      }
+      this._hadBoss = bossAliveNow;
 
       // v0.5:定时掉落技能胶囊
       this.powerupTimer -= dt;
@@ -385,6 +414,14 @@
         this.spawnPowerUp();
         this.powerupTimer = C.POWERUP.dropEvery;
       }
+    },
+
+    // v0.10.7:场上是否还有活 Boss(用于单波单 Boss 判定:Boss 死亡后才允许下一轮触发)
+    _anyBossAlive: function () {
+      for (var i = 0; i < this.aliens.length; i++) {
+        if (this.aliens[i].isBoss && !this.aliens[i].dead) return true;
+      }
+      return false;
     },
 
     // v0.5:按权重池随机一个技能,在上半屏随机位置生成胶囊

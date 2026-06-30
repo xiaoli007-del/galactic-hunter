@@ -34,6 +34,67 @@
     return c;
   }
 
+  // v0.10.7:特效弹细节叠加层 —— 画在贴图/矢量弹头之上,给冰/火/电/激光加可辨识的动态细节。
+  //   用 Date.now() 驱动旋转/脉动(workflow 禁用 Math.random 以外的随机源不适用于此处,Date.now 可用)。
+  function _bulletFxLayer(ctx, b, fx, color, sz) {
+    if (!fx) return;
+    var t = Date.now();
+    var cx = b.x, cy = b.y;
+    ctx.globalCompositeOperation = 'lighter';
+    if (fx === 'ice') {
+      // 冰冻:双层旋转冰晶环(六角对称,慢转)
+      var rot = t / 600;
+      ctx.strokeStyle = 'rgba(127,224,255,0.7)';
+      ctx.lineWidth = 2;
+      for (var ring = 0; ring < 2; ring++) {
+        var rr = sz * (0.28 + ring * 0.12);
+        ctx.beginPath();
+        for (var a = 0; a < 6; a++) {
+          var ang = rot * (ring ? -1 : 1) + a * Math.PI / 3;
+          var px = cx + Math.cos(ang) * rr, py = cy + Math.sin(ang) * rr;
+          if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath(); ctx.stroke();
+      }
+    } else if (fx === 'fire') {
+      // 火焰:外圈脉动橙红 + 拖尾火星点
+      var pul = 0.5 + 0.5 * Math.sin(t / 70);
+      drawGlow(ctx, '#ff7a3d', cx, cy, sz * (0.32 + pul * 0.1), 0.4 + pul * 0.2);
+      ctx.fillStyle = 'rgba(255,200,80,' + (0.5 + pul * 0.4) + ')';
+      for (var s = 0; s < 4; s++) {
+        var sa = s * Math.PI / 2 + t / 200;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(sa) * sz * 0.18, cy + Math.sin(sa) * sz * 0.18, sz * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (fx === 'bolt') {
+      // 闪电:弹体周围分叉电弧(随机折线,2-3 条)
+      ctx.strokeStyle = 'rgba(255,236,140,0.7)';
+      ctx.lineWidth = 1.8;
+      for (var j = 0; j < 3; j++) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        var seg = 3, px = cx, py = cy;
+        for (var segi = 0; segi < seg; segi++) {
+          px += (Math.random() - 0.5) * sz * 0.35;
+          py += (Math.random() - 0.5) * sz * 0.35;
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+    } else if (fx === 'laser') {
+      // 激光:核心能量流(纵向流动高亮带)+ 外层粉紫辉光
+      var flow = (t / 80) % 1;
+      drawGlow(ctx, color, cx, cy, sz * 0.4, 0.5);
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.6 + 0.3 * Math.sin(t / 50)) + ')';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, sz * 0.08, sz * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,180,240,0.5)';
+      ctx.fillRect(cx - sz * 0.04, cy - sz * 0.5 + flow * sz * 0.2, sz * 0.08, sz * 0.3);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   // —— 颜色工具 ——
   function hexToRgb(hex) {
     // 容错:lighten()/darken() 返回 'rgb(r,g,b)' 字符串。若直接喂给 drawGlow/glow
@@ -512,6 +573,8 @@
     alien: function (ctx, a) {
       var def = a.def, r = def.radius, flash = a.hitFlash > 0;
       var wob = a.wob || 0;
+      // v0.10.7:Boss 渲染放大(碰撞半径 def.radius 不变;visScale 仅放大视觉,更有压迫感)
+      if (def.boss) r = r * (G.Config.BOSS.bossScale || 1);
 
       ctx.save();
       ctx.translate(a.x, a.y);
@@ -1246,18 +1309,35 @@
       ctx.restore();
     },
 
-    // —— 子弹:像素风精灵——
+    // —— 子弹:按等级严格分档 + 特效弹细致叠加 ——
+    //   v0.10.7:等级分档表(尺寸 + 辉光色),等级越高越大越亮,Lv5 量子湮灭独占强化;
+    //           普通弹贴图不被技能/副炮色污染(等级色固定);特效弹在贴图上叠加矢量细节层。
     bullet: function (ctx, b) {
       var fx = b.skill && b.skill.fx;
+      var wlvl = Math.min(b.weaponLevel || 1, 5);
+      // 等级分档:尺寸倍率 + 辉光色(固定,与武器色一致,保证等级视觉统一不杂)
+      var LVL = [
+        { scale: 1.00, glow: '#5ad1ff' },  // Lv1 脉冲激光(青)
+        { scale: 1.18, glow: '#7df0c0' },  // Lv2 双联激光(绿)
+        { scale: 1.40, glow: '#c77dff' },  // Lv3 等离子炮(紫)
+        { scale: 1.65, glow: '#ffd166' },  // Lv4 散射波(金)
+        { scale: 2.10, glow: '#ff5d8f' },  // Lv5 量子湮灭(粉)—— 独占强化,最大最亮
+      ];
+      var ld = LVL[wlvl - 1];
+      var isLv5 = wlvl === 5;
+      var glowColor = fx ? b.color : ld.glow;   // 特效弹用技能色;普通弹用等级固定色(不被污染)
+      var br = b.radius;
+      var fxScale = fx ? 1.25 : 1.0;
+      var bsizeScale = ld.scale * fxScale;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
 
-      // 拖尾效果
+      // 拖尾:等级越高越粗;特效弹按类型差异化
       if (b.trail.length > 1) {
-        ctx.strokeStyle = b.color;
-        ctx.lineWidth = b.radius * (fx === 'laser' ? 3.4 : fx ? 2.4 : 2.0);  // v0.10.6:拖尾加粗,特效弹更粗
+        ctx.strokeStyle = glowColor;
+        ctx.lineWidth = br * (fx === 'laser' ? 3.6 : fx === 'fire' ? 2.8 : fx ? 2.4 : (1.6 + (wlvl - 1) * 0.25));
         ctx.lineCap = 'round';
-        ctx.globalAlpha = fx === 'fire' ? 0.4 : (fx === 'laser' ? 0.5 : 0.28);
+        ctx.globalAlpha = fx === 'fire' ? 0.42 : (fx === 'laser' ? 0.55 : 0.28 + (wlvl - 1) * 0.04);
         ctx.beginPath();
         ctx.moveTo(b.trail[0].x, b.trail[0].y);
         if (fx === 'bolt') {
@@ -1273,56 +1353,34 @@
         ctx.globalAlpha = 1;
       }
 
-      // v0.10.5:子弹贴图(AI 生图)。技能弹按 fx 取 bullet-{fx};普通弹按武器等级取 bullet{lvl}。
-      //   贴图弹头朝上(子弹往上飞),不旋转;大小按 b.radius + 武器等级缩放(高等级更大,匹配飞船等级感)。
-      //   预缩存小图(_bulletCache)避免每发 drawImage 大图掉帧;缺失退回下面矢量弹头。
-      var br = b.radius;
-      var wlvl = b.weaponLevel || 1;
-      var lvlScale = 1 + (wlvl - 1) * 0.15;             // 等级放大:Lv1=1.0 → Lv5=1.6(升级感明显)
-      var fxScale = fx ? 1.25 : 1.0;                    // 特效弹(冰/火/电/激光)更醒目
-      var bsizeScale = lvlScale * fxScale;
-      var bkey = fx ? ('bullet-' + fx) : ('bullet' + Math.min(wlvl, 5));
-      var btex = getBulletTex(bkey);                   // 预缩存的离屏小图(96px)
+      // 贴图弹头:技能弹按 fx 取 bullet-{fx};普通弹按武器等级取 bullet{lvl}。
+      var bkey = fx ? ('bullet-' + fx) : ('bullet' + wlvl);
+      var btex = getBulletTex(bkey);
       if (btex) {
-        var bs = br * 6.0 * bsizeScale;                 // 显示尺寸放大:贴图细节才看得清(原 4.2→缩成糊方块)
-        ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, b.color, b.x, b.y, bs * 0.5, 0.3);
+        var bs = br * 6.0 * bsizeScale;
+        // Lv5 双层辉光强化(Boss 级压迫感);其余单层
+        drawGlow(ctx, glowColor, b.x, b.y, bs * (isLv5 ? 0.72 : 0.5), isLv5 ? 0.42 : 0.3);
+        if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.32, 0.4);
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(btex, b.x - bs / 2, b.y - bs / 2, bs, bs);
+        _bulletFxLayer(ctx, b, fx, glowColor, bs);   // 特效弹细节叠加层(贴图之上)
         ctx.restore();
         return;
       }
 
-      // 矢量弹头(发光能量胶囊):激光=粗贯穿柱,其余=椭圆能量核 + 白心(贴图缺失时退回;与贴图尺寸同级放大)
+      // 矢量退回(贴图缺失):激光=粗贯穿柱,其余=椭圆能量核 + 白心(与贴图同尺寸分级)
       if (fx === 'laser') {
-        ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, b.color, b.x, b.y, br * 4.0, 0.55);
+        drawGlow(ctx, glowColor, b.x, b.y, br * 4.0, 0.55);
         ctx.fillStyle = '#fff';
         ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 1.0, br * 3.0, 0, 0, Math.PI * 2); ctx.fill();
       } else {
-        drawGlow(ctx, b.color, b.x, b.y, br * 3.2, 0.5);
-        var bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, br * 1.9);
-        bg.addColorStop(0, '#fff'); bg.addColorStop(0.5, b.color); bg.addColorStop(1, 'rgba(0,0,0,0)');
+        drawGlow(ctx, glowColor, b.x, b.y, br * 3.2 * ld.scale * 0.7, 0.5);
+        var bg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, br * 1.9 * ld.scale * 0.7);
+        bg.addColorStop(0, '#fff'); bg.addColorStop(0.5, glowColor); bg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = bg;
         ctx.beginPath(); ctx.ellipse(b.x, b.y, br * 1.1, br * 2.1, 0, 0, Math.PI * 2); ctx.fill();
       }
-
-      // 技能特效
-      if (fx === 'ice') {
-        ctx.strokeStyle = 'rgba(127,224,255,0.6)';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 2.5, 0, Math.PI * 2); ctx.stroke();
-      } else if (fx === 'fire') {
-        drawGlow(ctx, '#ff7a3d', b.x, b.y, b.radius * 2.8, 0.35);
-      } else if (fx === 'bolt') {
-        ctx.strokeStyle = 'rgba(255,224,102,0.5)';
-        ctx.lineWidth = 1.5;
-        for (var j = 0; j < 3; j++) {
-          var jx2 = (Math.random() - 0.5) * 12, jy2 = (Math.random() - 0.5) * 12;
-          ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x + jx2, b.y + jy2); ctx.stroke();
-        }
-      }
-
+      _bulletFxLayer(ctx, b, fx, glowColor, br * 6.0 * bsizeScale);
       ctx.restore();
     },
 

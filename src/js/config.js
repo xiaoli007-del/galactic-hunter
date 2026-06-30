@@ -154,6 +154,7 @@
       spawnIntervalMin: 0.28,    // 最快刷新间隔
       spawnIntervalDecay: 0.92,  // 每档刷新间隔衰减
       bossEveryKills: 60,        // 每 N 击杀触发 Boss
+      bossAlertDuration: 4.0,    // v0.10.7:Boss 入场前警报持续秒(3-4s 营造压迫感,期间 Boss 不入场)
       maxAliensOnScreen: 26,
       // v0.8:Boss 轮换 —— 每个触发点按序循环 t6→t9→t10→t6…,避免单一 Boss。
       bossRotation: ['t6', 't9', 't10'],
@@ -229,7 +230,8 @@
       dashEvery: 2.8,                            // 阶段 3 冲刺间隔(v0.10.5:Boss 不再冲刺,保留)
       dashSpeedMul: 4.5,                         // 冲刺速度倍率(保留)
       dashDuration: 0.6,                         // 冲刺持续(保留)
-      bossY: 320,                                // v0.10.5:Boss 固定锚点 Y(屏幕上方正中,压迫感位置)
+      bossY: 340,                                // v0.10.7:Boss 锚点 Y —— 飞船对面(飞船在 HEIGHT-180=1100;Boss 留上方,与飞船上下对峙,中间留弹道纵深)
+      bossScale: 1.35,                          // v0.10.7:Boss 整体放大倍率(t6/t9/t10 更大更有压迫感)
     },
 
     // 起始与持久化

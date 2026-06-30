@@ -666,27 +666,45 @@ assert(Game.enemyBullets.length === 4, 't10 阶段1 spiral 4臂 (得 ' + Game.en
 console.log('\n[18] v0.8 Boss 轮换 t6→t9→t10');
 Game.startGame();
 assert(Game._bossIdx === 0, '开局 _bossIdx=0(首 Boss 恒 t6)');
-// 模拟击杀到 boss 触发点
-Game.killCount = G.Config.WAVE.bossEveryKills;
-Game.updateWaves(0.01);
-var lastBoss = Game.aliens[Game.aliens.length - 1];
+// v0.10.7:Boss 触发后先警报(bossAlert>0、_bossPending),不立即入场。
+//   驱动警报归零后才召唤。辅助:触发 + 推进警报直到 Boss 入场,返回最后入场的 Boss。
+function triggerBossNext(kills) {
+  Game.killCount = kills;
+  Game.aliens.length = 0; Game._bossSpawned = false; Game._bossPending = false;
+  Game.updateWaves(0.01);
+  assert(Game._bossPending === true, '触发后进入警报 pending(不立即入场) kills=' + kills);
+  // 警报期间 Boss 不入场(普通小怪仍刷新,但无 isBoss 的怪)
+  var hasBossEarly = Game.aliens.some(function (a) { return a.isBoss; });
+  assert(hasBossEarly === false, '警报期间 Boss 未入场(压迫感) kills=' + kills);
+  // 推进警报归零 → Boss 入场
+  Game.bossAlert = 0;
+  Game.updateWaves(0.01);
+  return Game.aliens[Game.aliens.length - 1];
+}
+var lastBoss = triggerBossNext(G.Config.WAVE.bossEveryKills);
 assert(lastBoss.type === 't6', '第1次触发 → t6 (idx→' + Game._bossIdx + ')');
 assert(Game._bossIdx === 1, '_bossIdx 递增到 1');
-// 下一个触发点 → t9
-Game.killCount = G.Config.WAVE.bossEveryKills * 2;
-Game.aliens.length = 0; Game._bossSpawned = false;
-Game.updateWaves(0.01);
-var boss2 = Game.aliens[Game.aliens.length - 1];
+var boss2 = triggerBossNext(G.Config.WAVE.bossEveryKills * 2);
 assert(boss2.type === 't9', '第2次触发 → t9 (轮换生效)');
-// 第3次 → t10,第4次 → 回 t6(循环)
-Game.killCount = G.Config.WAVE.bossEveryKills * 3;
-Game.aliens.length = 0; Game._bossSpawned = false;
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 3).type === 't10', '第3次触发 → t10');
+assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 4).type === 't6', '第4次触发 → 回 t6(循环)');
+
+console.log('\n[18b] v0.10.7 单波单 Boss(不堆叠)');
+Game.startGame();
+// 触发 + 入场一个 Boss(Boss 在场)
+var singleBoss = triggerBossNext(G.Config.WAVE.bossEveryKills);
+assert(singleBoss && singleBoss.isBoss === true, 'Boss 入场在场');
+Game.updateWaves(0.01);   // 跑一帧让 _hadBoss 置 true(Boss 在场)
+assert(Game._hadBoss === true, '_hadBoss 追踪到 Boss 在场');
+// Boss 在场时,即便击杀再达阈值也不触发新 Boss
+Game.killCount = G.Config.WAVE.bossEveryKills * 2;
+Game.bossAlert = 0;
 Game.updateWaves(0.01);
-assert(Game.aliens[Game.aliens.length - 1].type === 't10', '第3次触发 → t10');
-Game.killCount = G.Config.WAVE.bossEveryKills * 4;
-Game.aliens.length = 0; Game._bossSpawned = false;
+assert(Game._bossPending === false && Game._bossSpawned === true, 'Boss 在场期间抑制新触发(单波单 Boss)');
+// Boss 死亡(清场)→ 下一帧下降沿复位
+Game.aliens.length = 0;   // 模拟 Boss 被击杀清场
 Game.updateWaves(0.01);
-assert(Game.aliens[Game.aliens.length - 1].type === 't6', '第4次触发 → 回 t6(循环)');
+assert(Game._bossSpawned === false, 'Boss 死亡后复位 _bossSpawned(允许下一轮)');
 
 console.log('\n[19] v0.8 新怪 + 敌弹渲染路径');
 // t7 预警/突进两态 + t8 蓄能态渲染
