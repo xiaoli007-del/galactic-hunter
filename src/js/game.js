@@ -303,14 +303,14 @@
       if (P.pointer.justPressed) {
         this.fire(w);
         this.fireTimer = 0;        // 从本次开火起重新计时连发
-        this._fireTurrets(1.0);    // v0.10.12:副炮改手动——跟随主弹点击瞬间一起开(不再自动)
+        // this._fireTurrets(1.0); // v0.13.2:副炮暂时停用(玩家要求),恢复时取消注释
       }
       if (P.pointer.down) {
         this.fireTimer += dt;
         while (this.fireTimer >= interval) {
           this.fire(w);
           this.fireTimer -= interval;
-          this._fireTurrets(dt);   // v0.10.12:按住连发时副炮也跟随节奏开火
+          // this._fireTurrets(dt); // v0.13.2:副炮暂时停用
         }
       } else {
         this.fireTimer = 0;
@@ -1185,8 +1185,9 @@
       var sCost = sMaxed ? 0 : C.SHIPS[sNext].cost;
       var sCanBuy = !sMaxed && this.coins >= sCost;
       var sTurret = sDef.turrets || 0;
-      var sTStat = sTurret > 0 ? ('副炮×' + sTurret + (sDef.turretAuto ? ' 自锁' : '')) : '无副炮';
-      var sStat = '火力 ×' + sDef.fireMul.toFixed(1) + '  ·  伤害 ' + effDmg + '  ·  ' + sTStat;
+      // v0.13.2:副炮暂时停用,HUD 不再显示副炮状态行(避免误导)。恢复时改回下行:
+      // var sTStat = sTurret > 0 ? ('副炮×' + sTurret + (sDef.turretAuto ? ' 自锁' : '')) : '无副炮';
+      var sStat = '火力 ×' + sDef.fireMul.toFixed(1) + '  ·  伤害 ' + effDmg;
       if (this._upgradeCard(ctx, xs[1], top, {
         w: cardW, title: '船舰 Lv' + this.shipLevel + ' ' + sDef.name, stat: sStat, color: sDef.glow,
         maxed: sMaxed, cost: sCost, canBuy: sCanBuy, maxedLabel: '已满级'

@@ -614,6 +614,7 @@
     _shipTurrets: function (ctx, r, t, flash) {
       var n = G.Config.SHIPS[t].turrets || 0;
       if (n <= 0) return;     // Lv1 无副炮
+      return;   // v0.13.2:副炮(伴飞小飞机)暂时停用渲染(玩家要求);恢复时删此行,下方原实现完整保留
       var col = G.Config.TURRET.color;
       // v0.13:优先用 wing-drone 伴飞小飞机贴图(机头朝上),缺图退回原炮管座。
       var wingTex = getShipTex ? null : null;
