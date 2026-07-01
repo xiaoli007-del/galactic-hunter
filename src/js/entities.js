@@ -161,6 +161,7 @@
     this.wob = Math.random() * Math.PI * 2;
     // Boss 多阶段(v0.3):t6/t9/t10(v0.8 统一为 def.boss 标志,与 tier 解耦)
     this.isBoss = def.boss === true || def.tier === 6;
+    this.isSummoned = false;   // v0.12:Boss 召唤的仆从标记(不推进 Boss 触发计数,防连环触发/堆叠)
     this.bossStage = 1;        // 1/2/3 阶段
     this.summonTimer = 0;      // 召唤倒计时
     this.dashTimer = 0;        // 冲刺倒计时
@@ -369,6 +370,7 @@
   Alien.prototype._updateFire = function (dt) {
     var f = this._fireDef();
     if (!f) return;
+    if (!f.every) return;              // v0.12:split 等无 every 的弹种存活时不发弹(靠 killAlien 触发死亡弹幕)
     if (this.fireTimer <= 0) this.fireTimer = f.every;     // 首帧懒初始化
     if (f.telegraph > 0 && this.fireTimer <= f.telegraph && !this._aimArmed) {
       this._aimArmed = true;                                 // 进入蓄能:锁定发射方向一次
@@ -470,29 +472,27 @@
   };
   EnemyBullet.prototype.draw = function (ctx) { G.Render.enemyBullet(ctx, this); };
 
-  // —— 金币(击杀掉落,飞向飞船吸收;v0.7 改为温和吸附 + 水晶外观)——
+  // —— 金币(击杀掉落;v0.12 取消磁吸——不再飞向飞船,自然下落由玩家走位接住)——
   function Coin(x, y, value) {
     this.x = x; this.y = y; this.value = value;
     this.r = 8;                    // v0.7:略放大(旧 6 太像小弹点,易被误当追踪弹)
     this.vx = (Math.random() - 0.5) * 120;
-    this.vy = (Math.random() - 0.5) * 120 - 60;
-    this.life = 4; this.dead = false; this.collected = false;
+    this.vy = 40 + Math.random() * 30;   // v0.12:初始略向下(自然下落起点)
+    this.life = 9; this.dead = false; this.collected = false;   // v0.12:寿命 4→9(无磁吸后需留足下落时间)
     this.t = 0;                    // 旋转相位(水晶渲染用)
   }
   Coin.prototype.update = function (dt, ship) {
     this.t += dt;
     this.life -= dt;
     if (this.life <= 0) this.dead = true;
-    // v0.7:温和吸附——远处缓慢飘近,近距(220px 内)才明显加速吸入。
-    //   不再"存活越久拉力越猛直冲飞船"(旧式像追踪弹躲不掉),改为收集物式缓吸。
-    var dx = ship.x - this.x, dy = ship.y - this.y;
-    var d = Math.hypot(dx, dy) || 1;
-    var pull = G.Config.FX.coinFlySpeed * (d < 220 ? 0.9 : 0.4);
-    this.vx += (dx / d) * pull * dt * 6;
-    this.vy += (dy / d) * pull * dt * 6;
-    this.vx *= 0.9; this.vy *= 0.9;
+    // v0.12:取消磁吸——金币不再有任何朝飞船的加速度(旧式拉力像追踪弹,与敌弹混淆)。
+    //   改为重力下落 + 水平摩擦,玩家横移到金币下方接住即可;弹道单向向下,一眼区分于敌弹。
+    this.vx *= 0.94;
+    this.vy += 90 * dt;                 // 重力加速下落
+    if (this.vy > 150) this.vy = 150;   // 限速,避免落太快接不到
     this.x += this.vx * dt; this.y += this.vy * dt;
-    if (d < ship.radius + 12) this.collected = true;
+    var dx = ship.x - this.x, dy = ship.y - this.y;
+    if (Math.hypot(dx, dy) < ship.radius + 14) this.collected = true;   // 接触拾取
   };
   Coin.prototype.draw = function (ctx) { G.Render.coin(ctx, this); };
 

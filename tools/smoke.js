@@ -684,64 +684,114 @@ Game.enemyBullets.length = 0;
 vd.bossStage = 1; vd.fireTimer = 0.05; vd.update(0.2);
 assert(Game.enemyBullets.length === 4, 't10 阶段1 spiral 4臂 (得 ' + Game.enemyBullets.length + ')');
 
-console.log('\n[18] v0.11 Boss 轮换 8 序列(t6/t9/t10 + 5 新 Boss 循环)');
+console.log('\n[18] v0.12 Boss 轮换 8 序列 + 随机起始(首 Boss 不再恒 t6)');
 Game.startGame();
-assert(Game._bossIdx === 0, '开局 _bossIdx=0(首 Boss 恒 t6)');
+assert(Game._bossIdx === 0, '开局 _bossIdx=0');
+assert(Game._bossProgress === 0 && Game._nextBossAt === G.Config.WAVE.bossEveryKills, '开局 _bossProgress=0 / _nextBossAt=阈值');
+assert(Game._bossRotationOffset >= 0 && Game._bossRotationOffset < G.Config.WAVE.bossRotation.length,
+  '开局 _bossRotationOffset 随机落在轮换表内 (offset=' + Game._bossRotationOffset + ')');
+// v0.12:触发用 _bossProgress≥_nextBossAt 阈值(替代 killCount%N 取模,防连环触发)。
+//   这里把 offset 钳回 0 做确定性轮换序断言;t8 顺序仍是 t6→t9→t10→5新→回 t6。
+Game._bossRotationOffset = 0;
 // v0.10.7:Boss 触发后先警报(bossAlert>0、_bossPending),不立即入场。
-//   驱动警报归零后才召唤。辅助:触发 + 推进警报直到 Boss 入场,返回最后入场的 Boss。
-function triggerBossNext(kills) {
-  Game.killCount = kills;
+//   驱动警报归零后才召唤。辅助:推 _bossProgress 到 _nextBossAt 阈值 + 推进警报直到 Boss 入场。
+function triggerBossNext() {
   Game.aliens.length = 0; Game._bossSpawned = false; Game._bossPending = false; Game._bossCooldown = 0;
+  Game._bossProgress = Game._nextBossAt;     // v0.12:推到阈值触发
   Game.updateWaves(0.01);
-  assert(Game._bossPending === true, '触发后进入警报 pending(不立即入场) kills=' + kills);
-  // 警报期间 Boss 不入场(普通小怪仍刷新,但无 isBoss 的怪)
+  assert(Game._bossPending === true, '触发后进入警报 pending(不立即入场)');
   var hasBossEarly = Game.aliens.some(function (a) { return a.isBoss; });
-  assert(hasBossEarly === false, '警报期间 Boss 未入场(压迫感) kills=' + kills);
-  // 推进警报归零 → Boss 入场
+  assert(hasBossEarly === false, '警报期间 Boss 未入场(压迫感)');
   Game.bossAlert = 0;
   Game.updateWaves(0.01);
   return Game.aliens[Game.aliens.length - 1];
 }
-var lastBoss = triggerBossNext(G.Config.WAVE.bossEveryKills);
-assert(lastBoss.type === 't6', '第1次触发 → t6 (idx→' + Game._bossIdx + ')');
+assert(triggerBossNext().type === 't6', '第1次触发 → t6 (idx→' + Game._bossIdx + ')');
 assert(Game._bossIdx === 1, '_bossIdx 递增到 1');
-var boss2 = triggerBossNext(G.Config.WAVE.bossEveryKills * 2);
-assert(boss2.type === 't9', '第2次触发 → t9 (轮换生效)');
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 3).type === 't10', '第3次触发 → t10');
+assert(triggerBossNext().type === 't9', '第2次触发 → t9 (轮换生效)');
+assert(triggerBossNext().type === 't10', '第3次触发 → t10');
 // v0.11:轮换扩到 8 Boss,第4-8 次触发 5 个新 Boss(各自机制),第9 次回 t6(8-Boss 循环)
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 4).type === 'boss-titan', '第4次触发 → boss-titan (机制 shield)');
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 5).type === 'boss-hydra', '第5次触发 → boss-hydra (机制 summon)');
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 6).type === 'boss-crystall', '第6次触发 → boss-crystall (机制 absorb)');
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 7).type === 'boss-maw', '第7次触发 → boss-maw (机制 wave)');
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 8).type === 'boss-overlord', '第8次触发 → boss-overlord (机制 summon+shield)');
-assert(triggerBossNext(G.Config.WAVE.bossEveryKills * 9).type === 't6', '第9次触发 → 回 t6 (8-Boss 循环)');
+assert(triggerBossNext().type === 'boss-titan', '第4次触发 → boss-titan (机制 shield)');
+assert(triggerBossNext().type === 'boss-hydra', '第5次触发 → boss-hydra (机制 summon)');
+assert(triggerBossNext().type === 'boss-crystall', '第6次触发 → boss-crystall (机制 absorb)');
+assert(triggerBossNext().type === 'boss-maw', '第7次触发 → boss-maw (机制 wave)');
+assert(triggerBossNext().type === 'boss-overlord', '第8次触发 → boss-overlord (机制 summon+shield)');
+assert(triggerBossNext().type === 't6', '第9次触发 → 回 t6 (8-Boss 循环)');
 
-console.log('\n[18b] v0.10.7 单波单 Boss(不堆叠)');
+console.log('\n[18b] v0.10.7 单波单 Boss(不堆叠)+ v0.12 阈值/召唤仆从不推进触发');
 Game.startGame();
+Game._bossRotationOffset = 0;
 // 触发 + 入场一个 Boss(Boss 在场)
-var singleBoss = triggerBossNext(G.Config.WAVE.bossEveryKills);
+var singleBoss = triggerBossNext();
 assert(singleBoss && singleBoss.isBoss === true, 'Boss 入场在场');
 Game.updateWaves(0.01);   // 跑一帧让 _hadBoss 置 true(Boss 在场)
 assert(Game._hadBoss === true, '_hadBoss 追踪到 Boss 在场');
-// Boss 在场时,即便击杀再达阈值也不触发新 Boss
-Game.killCount = G.Config.WAVE.bossEveryKills * 2;
+// Boss 在场时,即便 _bossProgress 再达阈值也不触发新 Boss
+Game._bossProgress = Game._nextBossAt;
 Game.bossAlert = 0;
 Game.updateWaves(0.01);
 assert(Game._bossPending === false && Game._bossSpawned === true, 'Boss 在场期间抑制新触发(单波单 Boss)');
+// v0.12:Boss 召唤的仆从击杀不推进 _bossProgress(防连环触发下一个 Boss → 重叠)
+var summon = new G.Entities.Alien('t2', 200, 200);
+summon.isSummoned = true;
+var progBefore = Game._bossProgress;
+Game.killAlien(summon);
+assert(Game._bossProgress === progBefore, '召唤仆从击杀不推进 _bossProgress (防连环触发)');
+assert(Game.killCount === 1, '召唤仆从仍计入 killCount(HUD 显示)');
 // Boss 死亡(清场)→ 下一帧下降沿复位
 Game.aliens.length = 0;   // 模拟 Boss 被击杀清场
 Game.updateWaves(0.01);
 assert(Game._bossSpawned === false, 'Boss 死亡后复位 _bossSpawned(允许下一轮)');
-// v0.11.1:Boss 死亡后冷却 6s,期间即便 killCount 到阈值也不触发(防连触发/视觉堆叠)
+// v0.11.1:Boss 死亡后冷却 6s,期间即便到阈值也不触发(防连触发/视觉堆叠)
 assert(Game._bossCooldown > 0, 'Boss 死亡后进入冷却 (cooldown=' + Game._bossCooldown.toFixed(1) + ')');
-Game.killCount = G.Config.WAVE.bossEveryKills * 3;   // 到下一个阈值
+Game._bossProgress = Game._nextBossAt;   // 到下一个阈值
 Game.updateWaves(0.01);
 assert(Game._bossPending === false, '冷却期间不触发新 Boss');
 // 冷却耗尽后才允许触发
 Game._bossCooldown = 0;
-Game.killCount = G.Config.WAVE.bossEveryKills * 3;
+Game._bossProgress = Game._nextBossAt;
 Game.updateWaves(0.01);
 assert(Game._bossPending === true, '冷却结束后恢复触发');
+
+console.log('\n[18c] v0.12 独有弹幕(fan/cross/split)+ Boss 血量上调 + 金币去磁吸');
+// t13 飞镖无人机:fan 宽扇 5 发
+Game.startGame();
+Game.enemyBullets.length = 0;
+var drone = new G.Entities.Alien('t13', G.Config.WIDTH / 2, 200);
+Game.aliens.push(drone);
+assert(G.Config.ALIENS.t13.fire.pattern === 'fan', 't13 配置 fan 弹种');
+drone.fireTimer = 0.05; drone.update(0.1);
+assert(Game.enemyBullets.length === 5, 'fan 发射 5 发宽扇敌弹 (得 ' + Game.enemyBullets.length + ')');
+// t15 钻头钻探者:cross 十字 4 向
+Game.enemyBullets.length = 0;
+var drl = new G.Entities.Alien('t15', G.Config.WIDTH / 2, 300);
+Game.aliens.push(drl);
+assert(G.Config.ALIENS.t15.fire.pattern === 'cross', 't15 配置 cross 弹种');
+drl.fireTimer = 0.05; drl.update(0.1);
+assert(Game.enemyBullets.length === 4, 'cross 发射 4 发十字敌弹 (得 ' + Game.enemyBullets.length + ')');
+// t16 晶簇机械体:split 存活时不发弹(无 every),被击杀炸 6 发圆环
+Game.enemyBullets.length = 0;
+var cryst = new G.Entities.Alien('t16', G.Config.WIDTH / 2, 400);
+Game.aliens.push(cryst);
+assert(G.Config.ALIENS.t16.fire.pattern === 'split' && !G.Config.ALIENS.t16.fire.every, 't16 配置 split 且无 every(存活不发弹)');
+cryst.fireTimer = 0.05; cryst.update(0.5);   // 推进计时
+assert(Game.enemyBullets.length === 0, 'split 存活时不发弹 (得 ' + Game.enemyBullets.length + ')');
+Game.enemyBullets.length = 0;
+Game.killAlien(cryst);
+assert(Game.enemyBullets.length === 6, 'split 被击杀炸 6 发圆环弹 (得 ' + Game.enemyBullets.length + ')');
+// Boss 血量上调(原 t6=200/t9=500/t10=1200 秒爆,现显著提升)
+assert(G.Config.ALIENS.t6.hp === 550, 't6 血量上调 200→550');
+assert(G.Config.ALIENS.t9.hp === 1400, 't9 血量上调 500→1400');
+assert(G.Config.ALIENS.t10.hp === 2800, 't10 血量上调 1200→2800');
+assert(G.Config.ALIENS['boss-overlord'].hp === 5000, 'boss-overlord 血量上调 3500→5000');
+// 金币去磁吸:ship 远离时金币不朝飞船加速(旧磁吸会有显著横向拉力)
+Game.startGame();
+var coin = new G.Entities.Coin(100, 200, 5);
+coin.vx = 0; coin.vy = 0;              // 抹掉初始随机速度,只观测磁吸/重力
+Game.ship.x = 600; Game.ship.y = 1100; // 远离金币
+coin.update(0.1, Game.ship);
+assert(Math.abs(coin.vx) < 5, '金币无磁吸:ship 远离时无横向拉力 (vx=' + coin.vx.toFixed(2) + ')');
+assert(coin.vy > 0, '金币改为重力下落 (vy=' + coin.vy.toFixed(2) + ')');
 
 console.log('\n[19] v0.8 新怪 + 敌弹渲染路径');
 // t7 预警/突进两态 + t8 蓄能态渲染

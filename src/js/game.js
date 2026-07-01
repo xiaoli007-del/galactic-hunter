@@ -41,7 +41,7 @@
     fireTimer: 0,
     screenFlash: 0,
     _clickConsumed: false,
-    _bossIdx: 0,              // v0.8:Boss 轮换序号(t6→t9→t10→t6…);startGame 重置为 0(首 Boss 恒 t6)
+    _bossIdx: 0,              // v0.8:Boss 轮换序号;startGame 重置为 0(配合 _bossRotationOffset 取轮换表)
     turretTimer: 0,           // v0.10:副炮自动开火计时(按 SHIPS[shipLevel].turretRate 节奏连发)
     bossAlert: 0,             // v0.10.4:Boss 出现警报剩余秒(>0 时渲染 EVA 式红条警报)
     _bossSpawned: false,      // v0.10.7:本轮 Boss 已触发(警报或在场期间抑制重复触发)
@@ -49,6 +49,9 @@
     _bossPendingType: null,   // v0.10.7:待入场的 Boss 类型(pending 期间暂存)
     _hadBoss: false,          // v0.10.7:上一帧是否有活 Boss(用于死亡下降沿复位 _bossSpawned)
     _bossCooldown: 0,         // v0.11.1:Boss 死亡后冷却秒(期间不触发新 Boss,防连触发)
+    _bossProgress: 0,         // v0.12:仅常规击杀(非召唤仆从/非 Boss)累计,驱动 Boss 触发(不受召唤干扰)
+    _nextBossAt: 0,           // v0.12:下次 Boss 触发阈值(每次触发后 += bossEveryKills,替代取模防连环)
+    _bossRotationOffset: 0,   // v0.12:本局轮换起始偏移(每局随机,首 Boss 不再恒 t6)
 
     init: function () {
       this.loadSave();
@@ -125,12 +128,15 @@
       this.texts.length = 0;
       this.powerups.length = 0;
       this.enemyBullets.length = 0;         // v0.8:清空场上敌弹
-      this._bossIdx = 0;                    // v0.8:Boss 轮换序号归零(首 Boss 恒 t6)
+      this._bossIdx = 0;                    // v0.8:Boss 轮换序号归零
       this._bossSpawned = false;            // v0.10.7:每局重置 Boss 触发标志
       this._bossPending = false;            // v0.10.7:每局重置 Boss 警报/待入场状态
       this._bossPendingType = null;
       this._hadBoss = false;                // v0.10.7:每局重置 Boss 在场追踪
       this._bossCooldown = 0;               // v0.11.1:每局重置 Boss 冷却
+      this._bossProgress = 0;               // v0.12:常规击杀计数归零
+      this._nextBossAt = C.WAVE.bossEveryKills;   // v0.12:首 Boss 阈值(阈值递增,非取模)
+      this._bossRotationOffset = Math.floor(Math.random() * C.WAVE.bossRotation.length);  // v0.12:每局随机首 Boss,不再恒 t6
       this.bossAlert = 0;                   // v0.10.7:每局重置警报
       this.activeSkill = null;             // v0.5:每局重置技能(开局用武器默认弹道)
       this.turretTimer = 0;               // v0.10:副炮计时归零(每局重置,与主开火解耦)
@@ -275,7 +281,7 @@
       // 调试:按 B 键立即召唤下一个 Boss + 警报(检视放大后的 Boss + EVA 警报用)
       if (P.isKeyJustPressed('b')) {
         var rot2 = C.WAVE.bossRotation;
-        var bt = rot2[this._bossIdx % rot2.length];
+        var bt = rot2[(this._bossRotationOffset + this._bossIdx) % rot2.length];
         this._bossIdx++;
         this.spawnAlien(0, bt);
         this.bossAlert = C.WAVE.bossAlertDuration;
@@ -394,16 +400,19 @@
         this.spawnAlien(tier);
         this.spawnTimer = interval;
       }
-      // Boss 触发(v0.10.7:警报提前 + 延迟入场 + 单波单 Boss,不堆叠)
-      //   ① 击杀达阈值且当前无 Boss/无 pending → 进入 _bossPending:启动警报(4s),暂不召唤。
+      // Boss 触发(v0.12:阈值递增 + 随机起始 + 单波单 Boss,根除重叠/连环触发)
+      //   ① 常规击杀累计 _bossProgress 达 _nextBossAt,且当前无 Boss/无 pending/无冷却 → 进 _bossPending:警报 4s,暂不召唤。
       //   ② 警报期间不召唤 Boss(营造压迫感);bossAlert 归零才 spawnAlien 入场。
       //   ③ Boss 在场或 pending 期间抑制新触发;Boss 死亡后(_anyBossAlive=false)才复位 _bossSpawned。
-      //   v0.11.1:_bossCooldown 死亡后冷却 6s,防 Boss+召唤仆从都计 killCount 致连环触发/视觉堆叠。
+      //   v0.12 改动:用 _bossProgress(仅常规击杀,不含召唤仆从/Boss 本体)+ 显式阈值 _nextBossAt 替代旧的
+      //   killCount%N===0 取模——取模在 Boss 战内 killCount 跨倍数时易连环触发,召唤仆从又加速触发,造成重叠。
+      //   阈值每次触发后 += bossEveryKills,不再卡在倍数;_bossRotationOffset 每局随机,首 Boss 不再恒 t6。
       if (this._bossCooldown > 0) this._bossCooldown -= dt;
-      if (this.killCount > 0 && this.killCount % C.WAVE.bossEveryKills === 0 && !this._bossSpawned && !this._bossPending && this._bossCooldown <= 0) {
+      if (this._bossProgress >= this._nextBossAt && !this._bossSpawned && !this._bossPending && this._bossCooldown <= 0 && !this._anyBossAlive()) {
         var rot = C.WAVE.bossRotation;
-        this._bossPendingType = rot[this._bossIdx % rot.length];
+        this._bossPendingType = rot[(this._bossRotationOffset + this._bossIdx) % rot.length];
         this._bossIdx++;
+        this._nextBossAt += C.WAVE.bossEveryKills;   // 阈值递增(非取模,避免卡倍数连环触发)
         this._bossPending = true;
         this._bossSpawned = true;
         this.bossAlert = C.WAVE.bossAlertDuration;   // v0.10.7:Boss 入场前警报 4s(红条闪烁 + 警告字)
@@ -628,6 +637,9 @@
     killAlien: function (a) {
       this.score += a.def.score;
       this.killCount++;
+      // v0.12:仅常规击杀(非 Boss 召唤的仆从、非 Boss 本体)推进 Boss 触发计数。
+      //   召唤仆从计 killCount(HUD 显示/连锁)但不推进 _bossProgress,防 Boss 战内连环触发下一个 Boss → 重叠。
+      if (!a.isBoss && !a.isSummoned) this._bossProgress++;
       this.explode(a.x, a.y, a.def.color, C.FX.explosionParticles);
       // 掉落金币
       var drops = a.def.tier <= 2 ? 1 : (a.def.tier <= 4 ? 2 : 3);
@@ -635,6 +647,17 @@
         this.coinsArr.push(new Ent.Coin(a.x + E.rand(-10, 10), a.y + E.rand(-10, 10), Math.ceil(a.def.coin / drops)));
       }
       this.texts.push(new Ent.FloatingText(a.x, a.y, '+' + a.def.score, a.def.color, a.def.tier >= 5 ? 30 : 22));
+      // v0.12:split 弹种(如 t16 晶簇)被击杀瞬间炸成圆环弹(独有死亡弹幕)
+      if (a.def.fire && a.def.fire.pattern === 'split') {
+        var sf = a.def.fire;
+        for (var si = 0; si < sf.count; si++) {
+          if (this.enemyBullets.length >= C.ENEMY_BULLET.maxOnScreen) break;
+          var sa = (si / sf.count) * Math.PI * 2;
+          this.enemyBullets.push(new Ent.EnemyBullet(
+            a.x + Math.cos(sa) * (a.radius + 4), a.y + Math.sin(sa) * (a.radius + 4),
+            Math.cos(sa) * sf.speed, Math.sin(sa) * sf.speed, a.def.color, 'ring', false));
+        }
+      }
       // Boss 击杀:更大爆炸 + 胜利飘字
       if (a.isBoss) {
         this.explode(a.x, a.y, a.def.color, 40);
@@ -670,9 +693,11 @@
       for (var i = 0; i < sc; i++) {
         if (this.aliens.length >= C.WAVE.maxAliensOnScreen) break;
         var ang = (i / sc) * Math.PI * 2;
-        this.aliens.push(new Ent.Alien(st,
+        var summon = new Ent.Alien(st,
           boss.x + Math.cos(ang) * (boss.radius + 20),
-          boss.y + Math.sin(ang) * (boss.radius + 20)));
+          boss.y + Math.sin(ang) * (boss.radius + 20));
+        summon.isSummoned = true;   // v0.12:标记召唤仆从(击杀不推进 Boss 触发计数,防连环触发)
+        this.aliens.push(summon);
       }
       this.texts.push(new Ent.FloatingText(boss.x, boss.y - boss.radius, '召唤!', '#c77dff', 20));
     },
@@ -708,6 +733,19 @@
           this._spawnEBullet(alien, ra, sp, col, pat, boss);
         }
         alien.fireAngle += 0.3;   // 微漂使每环错开
+      } else if (pat === 'fan') {
+        // v0.12:宽扇——以瞄准方向为中轴,count 发均布在 ±spread/2 大张角,压贴走位空间
+        var fa = alien._aimAngle != null ? alien._aimAngle : alien._angleToShip();
+        for (var fi = 0; fi < n; fi++) {
+          var foff = n === 1 ? 0 : (fi / (n - 1) - 0.5) * (f.spread || 0.8);
+          this._spawnEBullet(alien, fa + foff, sp, col, 'aimed', boss);
+        }
+      } else if (pat === 'cross') {
+        // v0.12:十字——下/左/右/上 四向固定弹(不瞄准,可读可躲的固定弹幕)
+        var crossAngs = [Math.PI / 2, 0, Math.PI, -Math.PI / 2];
+        for (var ci = 0; ci < Math.min(n, 4); ci++) {
+          this._spawnEBullet(alien, crossAngs[ci], sp, col, 'aimed', boss);
+        }
       } else if (pat === 'wave') {
         // v0.10.15:位移冲击波 —— 全圆均布膨胀弹(从 Boss 中心向外径向,半径随时间增大)
         for (var w = 0; w < n; w++) {
