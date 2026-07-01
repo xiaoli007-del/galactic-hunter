@@ -72,7 +72,7 @@
     // 外星怪物(对应 GDD §4.1)。spawnWeight 控制刷新概率。
     //   behavior = 特殊行为(v0.3):t4 幽灵闪现回避、t5 精英螺旋冲刺
     ALIENS: {
-      t1: { name: '爬虫',   tier: 1, hp: 1,   score: 10,   coin: 4,   radius: 18, speed: 95,  spawnWeight: 40, color: '#8aff80', behavior: null },
+      t1: { name: '爬虫',   tier: 1, hp: 1,   score: 10,   coin: 4,   radius: 28, speed: 95,  spawnWeight: 40, color: '#8aff80', behavior: null },   // v0.13:radius 18→28(玩家反馈小飞机太小看不清)
       t2: { name: '飞翼',   tier: 2, hp: 3,   score: 30,   coin: 9,   radius: 24, speed: 70,  spawnWeight: 25, color: '#5ad1ff', behavior: null,
             fire: { pattern: 'aimed', every: 3.2, count: 1, speed: 300, telegraph: 0.5 } },   // 朝飞船瞄一发
       t3: { name: '蟹甲',   tier: 3, hp: 8,   score: 80,   coin: 15,  radius: 34, speed: 48,  spawnWeight: 18, color: '#ffd166', behavior: null,
@@ -112,19 +112,19 @@
       // v0.10.3:扩展怪(AI 贴图已生成接入)。t11-t20 已接入;t21-t23 待生图后补。
       //   全 AI 贴图、画风与 t1-t10 统一;发弹配置沿用分级(小怪 aimed/精英 spiral+ring)。
       t11: { name: '装甲水母',   tier: 2, hp: 2,  score: 20,  coin: 6,   radius: 22, speed: 78, spawnWeight: 22, color: '#4dd0e1', behavior: null,
-             fire: { pattern: 'aimed', every: 3.5, count: 1, speed: 280, telegraph: 0.5 } },
+             fire: { pattern: 'orb', every: 3.5, count: 6, speed: 260, telegraph: 0.5 } },   // v0.13:释放一堆球状弹(独有 orb)
       t12: { name: '双足机甲',   tier: 3, hp: 6,  score: 70,  coin: 14,  radius: 28, speed: 52, spawnWeight: 16, color: '#8d6e63', behavior: null,
-             fire: { pattern: 'aimed', every: 2.8, count: 2, spread: 0.2, speed: 290, telegraph: 0.55 } },
+             fire: { pattern: 'shock', every: 2.8, count: 10, speed: 240, telegraph: 0.55 } },   // v0.13:释放震荡波(独有 shock 膨胀环)
       t13: { name: '飞镖无人机', tier: 2, hp: 3,  score: 35,  coin: 8,   radius: 20, speed: 88, spawnWeight: 20, color: '#b39ddb', behavior: null,
              fire: { pattern: 'fan', every: 2.6, count: 5, spread: 0.85, speed: 320, telegraph: 0.45 } },   // v0.12:独有「宽扇」5 发大张角扇形压贴(区别于普通 aimed 窄扇)
       t14: { name: '装甲海星',   tier: 3, hp: 7,  score: 85,  coin: 16,  radius: 30, speed: 50, spawnWeight: 14, color: '#ffb74d', behavior: null,
-             fire: { pattern: 'ring', every: 3.5, count: 8, speed: 240, telegraph: 0 } },
+             fire: { pattern: 'aimed', every: 3.2, count: 1, speed: 460, telegraph: 0.6, bulletTex: 'ebullet-laser' } },   // v0.13:发射直线激光(粗高速弹,独有 laser 弹图)
       t15: { name: '钻头钻探者', tier: 4, hp: 10, score: 110, coin: 20,  radius: 26, speed: 64, spawnWeight: 10, color: '#90a4ae', behavior: null,
              fire: { pattern: 'cross', every: 2.6, count: 4, speed: 300, telegraph: 0.45 } },   // v0.12:独有「十字」四向固定弹幕(下/左/右/上,不瞄准、可读可躲)
       t16: { name: '晶簇机械体', tier: 3, hp: 8,  score: 90,  coin: 17,  radius: 28, speed: 56, spawnWeight: 13, color: '#4db6ac', behavior: null,
              fire: { pattern: 'split', count: 6, speed: 260 } },   // v0.12:独有「裂体」——存活时不发弹,被击杀瞬间炸成 6 发圆环弹(无 every,靠 killAlien 触发)
-      t17: { name: '蜂巢炮台',   tier: 4, hp: 12, score: 130, coin: 24,  radius: 32, speed: 46, spawnWeight: 9,  color: '#fff176', behavior: null,
-             fire: { pattern: 'ring', every: 2.8, count: 12, speed: 260, telegraph: 0.4 } },
+      t17: { name: '蜂巢炮台',   tier: 4, hp: 12, score: 130, coin: 24,  radius: 32, speed: 46, spawnWeight: 9,  color: '#fff176', behavior: null, mechanism: 'summon', summonType: 'drone-bee', summonCount: 2, summonEvery: 5.0,
+             fire: { pattern: 'ring', every: 2.8, count: 12, speed: 260, telegraph: 0.4 } },   // v0.13:周期召唤小蜜蜂无人机 + 环形弹幕(独有蜂群)
       t18: { name: '回旋镖翼',   tier: 2, hp: 4,  score: 40,  coin: 9,   radius: 24, speed: 84, spawnWeight: 18, color: '#7986cb', behavior: null,
              fire: { pattern: 'aimed', every: 3.0, count: 1, speed: 300, telegraph: 0.5 } },
       t19: { name: '装甲鳐',     tier: 3, hp: 9,  score: 95,  coin: 18,  radius: 30, speed: 54, spawnWeight: 12, color: '#a1887f', behavior: null,
@@ -163,6 +163,21 @@
           2: { pattern: 'spiral', every: 0.14, count: 5, spiralStep: 0.28, speed: 320, telegraph: 0 },
           3: { pattern: 'ring',   every: 1.5, count: 26, speed: 340, telegraph: 0 },
         } } },
+      // v0.13:5 个精英级怪物(血量/体型/机制均高于普通怪,稀有刷新)。tier 5-6,低 spawnWeight。
+      //   每个独有机制:bulwark 回充护盾 / splitter 死亡分裂 / lancer 横扫激光 /
+      //   carrier 召唤蜂群 / juggernaut 预警冲撞。攻击弹复用已规划贴图(见 §3.5/3.7)。
+      'elite-bulwark': { name: '堡垒巨兽', tier: 5, hp: 60,  score: 600,  coin: 120, radius: 48, speed: 36, spawnWeight: 3,  color: '#ff8c42', behavior: null, elite: true, mechanism: 'shield', shield: 80, shieldRegen: 4.0,
+        fire: { pattern: 'fan', every: 2.8, count: 5, spread: 0.7, speed: 280, telegraph: 0.55, bulletTex: 'ebullet-boss' } },   // 重弹宽扇(用 boss 重弹图)
+      'elite-splitter': { name: '裂殖母体', tier: 5, hp: 45,  score: 500,  coin: 100, radius: 44, speed: 40, spawnWeight: 3,  color: '#b14dff', behavior: null, elite: true, mechanism: 'split', splitType: 't13', splitCount: 3,
+        fire: { pattern: 'ring', every: 3.0, count: 10, speed: 240, telegraph: 0.4 } },   // 环形弹幕(死亡再分裂 3 只小怪)
+      'elite-lancer': { name: '光矛猎手', tier: 6, hp: 50,  score: 700,  coin: 140, radius: 42, speed: 0,  spawnWeight: 2,  color: '#ff4dd2', behavior: 'hover', elite: true, mechanism: 'lasersweep',
+        fire: { pattern: 'lasersweep', every: 3.5, charge: 1.0, sweepDur: 1.2, beamLen: 900, beamWidth: 14, speed: 0, telegraph: 0, count: 0 } },   // 悬停固定 + 周期横扫激光束
+      'elite-carrier': { name: '蜂群母舰', tier: 6, hp: 55,  score: 750,  coin: 150, radius: 50, speed: 28, spawnWeight: 2,  color: '#ffd166', behavior: null, elite: true, mechanism: 'summon', summonType: 'drone-bee', summonCount: 3, summonEvery: 4.5,
+        fire: { pattern: 'spiral', every: 0.5, count: 2, spiralStep: 0.5, speed: 240, telegraph: 0 } },   // 螺旋弹 + 周期召唤蜂群
+      'elite-juggernaut': { name: '重装冲锋者', tier: 6, hp: 70,  score: 800,  coin: 160, radius: 52, speed: 50, spawnWeight: 2,  color: '#ff3d6e', behavior: 'dash', elite: true },   // 预警→高速冲撞(复用 t7 dash 行为,体型血量更大)
+      // v0.13:小蜜蜂无人机(t17 蜂巢炮台 / elite-carrier 召唤的仆从实体)。不入刷新池(spawnWeight:0),
+      //   只由召唤生成。小型快速下冲,本体撞击威胁。type 名即贴图名(drone-bee.png)。
+      'drone-bee': { name: '蜂群无人机', tier: 2, hp: 2,  score: 15,  coin: 4,   radius: 16, speed: 120, spawnWeight: 0, color: '#ffd166', behavior: null },
     },
     // 特殊行为数值(v0.3)
     BEHAVIOR: {
@@ -176,6 +191,10 @@
       dashTelegraph: 0.6,     // 预警蓄能时长(锁定方向,玩家可读可躲)
       dashSpeedMul: 5.5,      // 突进速度倍率
       dashReposition: 1.4,    // 突进结束/出界后重新入场前的间隔
+      // v0.13 精英机制数值
+      eliteShieldRegen: 4.0,    // bulwark 护盾回充间隔(s,盾未满时每 N 秒回 1 格)
+      eliteHoverY: 420,         // lancer 悬停锚点 Y(悬停在屏幕上半部固定)
+      laserSweepColor: '#ff4dd2', // 横扫激光色(品红)
     },
 
     // 波次:随时间提升高等级怪权重。难度档每 30s 一档。

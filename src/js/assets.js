@@ -29,7 +29,10 @@
            'ebullet-aimed','ebullet-ring','ebullet-boss','enemy-bullet',        // v0.10.11:敌弹(aimed直射/ring环射/boss重弹;spiral复用enemy-bullet)
            'powerup-ice','powerup-fire','powerup-bolt','powerup-laser','powerup-multi2',   // v0.10.11:技能胶囊(双/三/四发共用 multi2 底图+程序画数字)
            'boss-titan','boss-hydra','boss-crystall','boss-maw','boss-overlord',          // v0.10.15:5 新 Boss(护盾/仆从/吸收/冲击波机制)
-           'turret-bullet'],                                                                // v0.10.15:副炮小弹贴图
+           'turret-bullet',                                                                // v0.10.15:副炮小弹贴图
+           'elite-bulwark','elite-splitter','elite-lancer','elite-carrier','elite-juggernaut',   // v0.13:5 精英怪(护盾/分裂/激光/召唤蜂群/冲撞)
+           'ebullet-orb','ebullet-shock','ebullet-laser',                                  // v0.13:新攻击弹(t11球/t12震荡波/t14+lancer激光)
+           'drone-bee','wing-drone'],                                                      // v0.13:小蜜蜂无人机(t17+carrier召唤)/玩家伴飞护卫机
 
     init: function () {
       var self = this;

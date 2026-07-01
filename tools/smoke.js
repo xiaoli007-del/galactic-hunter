@@ -793,6 +793,70 @@ coin.update(0.1, Game.ship);
 assert(Math.abs(coin.vx) < 5, '金币无磁吸:ship 远离时无横向拉力 (vx=' + coin.vx.toFixed(2) + ')');
 assert(coin.vy > 0, '金币改为重力下落 (vy=' + coin.vy.toFixed(2) + ')');
 
+console.log('\n[18d] v0.13 精英怪 + 新弹幕 + 金币直接结算 + t1 放大');
+// t1 放大(radius 18→28,玩家反馈太小看不清)
+assert(G.Config.ALIENS.t1.radius === 28, 't1 半径放大 18→28');
+// 5 精英配置完整
+assert(G.Config.ALIENS['elite-bulwark'].elite === true && G.Config.ALIENS['elite-bulwark'].mechanism === 'shield', 'elite-bulwark 精英+护盾机制');
+assert(G.Config.ALIENS['elite-splitter'].mechanism === 'split' && G.Config.ALIENS['elite-splitter'].splitType, 'elite-splitter 分裂机制');
+assert(G.Config.ALIENS['elite-lancer'].mechanism === 'lasersweep', 'elite-lancer 横扫激光机制');
+assert(G.Config.ALIENS['elite-carrier'].mechanism === 'summon' && G.Config.ALIENS['elite-carrier'].summonType === 'drone-bee', 'elite-carrier 召唤蜂群');
+assert(G.Config.ALIENS['elite-juggernaut'].behavior === 'dash', 'elite-juggernaut 冲撞行为(复用 t7 dash)');
+assert(G.Config.ALIENS['elite-bulwark'].hp > 40 && G.Config.ALIENS['elite-bulwark'].radius > 40, '精英血量/体型均大于普通怪');
+// drone-bee 仆从实体定义(召唤用,不入刷新池)
+assert(G.Config.ALIENS['drone-bee'] && G.Config.ALIENS['drone-bee'].spawnWeight === 0, 'drone-bee 仆从实体定义 + spawnWeight=0(只召唤不刷新)');
+// t11 orb / t12 shock / t14 laser 弹种
+assert(G.Config.ALIENS.t11.fire.pattern === 'orb', 't11 改用 orb 球状弹');
+assert(G.Config.ALIENS.t12.fire.pattern === 'shock', 't12 改用 shock 震荡波');
+assert(G.Config.ALIENS.t14.fire.bulletTex === 'ebullet-laser', 't14 直线激光(用 ebullet-laser 弹图)');
+assert(G.Config.ALIENS.t17.mechanism === 'summon' && G.Config.ALIENS.t17.summonType === 'drone-bee', 't17 召唤蜂群');
+// t11 orb 发射 6 球
+Game.startGame();
+Game.enemyBullets.length = 0;
+var jf = new G.Entities.Alien('t11', G.Config.WIDTH / 2, 200);
+Game.aliens.push(jf);
+jf.fireTimer = 0.05; jf.update(0.1);
+assert(Game.enemyBullets.length === 6 && Game.enemyBullets[0].pattern === 'orb', 't11 orb 发射 6 球状弹 (得 ' + Game.enemyBullets.length + ')');
+// t12 shock 发射 10 膨胀弹
+Game.enemyBullets.length = 0;
+var mn = new G.Entities.Alien('t12', G.Config.WIDTH / 2, 300);
+Game.aliens.push(mn);
+mn.fireTimer = 0.05; mn.update(0.1);
+assert(Game.enemyBullets.length === 10 && Game.enemyBullets[0].expand === true, 't12 shock 发射 10 膨胀震荡弹 (得 ' + Game.enemyBullets.length + ')');
+// elite-bulwark 护盾:盾在时 takeDamage 返回 shield 不扣血
+var bl = new G.Entities.Alien('elite-bulwark', 360, 300);
+var hpB = bl.hp;
+var hitB = bl.takeDamage(20);
+assert(hitB === 'shield' && bl.hp === hpB, 'bulwark 盾在时扣盾不扣血 (hit=' + hitB + ', hp ' + hpB + '→' + bl.hp + ')');
+// elite-splitter 死亡分裂:killAlien 后场上多 3 只 t13
+Game.startGame();
+var sp = new G.Entities.Alien('elite-splitter', 360, 300);
+Game.aliens.push(sp);
+var aliensB = Game.aliens.length;
+Game.killAlien(sp);
+var splitKids = Game.aliens.filter(function (a) { return a.type === 't13'; }).length;
+assert(splitKids === 3, 'splitter 死亡分裂 3 只 t13 (得 ' + splitKids + ')');
+// 金币直接结算:击杀不加 Coin 实体,直接进 coins
+Game.startGame();
+Game.coinsArr.length = 0; Game.coins = 0;
+var t1k = new G.Entities.Alien('t1', 360, 300);
+Game.killAlien(t1k);
+assert(Game.coins === G.Config.ALIENS.t1.coin, '金币直接结算进钱包 (coins=' + Game.coins + ', 不再掉实体)');
+assert(Game.coinsArr.length === 0, '屏幕无 Coin 实体 (coinsArr=' + Game.coinsArr.length + ')');
+// elite-carrier 召唤蜂群
+Game.startGame();
+var cv = new G.Entities.Alien('elite-carrier', 360, 300);
+Game.aliens.push(cv);
+var ab = Game.aliens.length;
+Game._eliteSummon(cv);
+var bees = Game.aliens.filter(function (a) { return a.type === 'drone-bee'; }).length;
+assert(bees === 3, 'carrier 召唤 3 只 drone-bee (得 ' + bees + ')');
+// elite-lancer 横扫激光状态机推进
+var lc = new G.Entities.Alien('elite-lancer', 360, 300);
+assert(lc.laserState === 0 && lc.mechanism === 'lasersweep', 'lancer 初始 laserState=0');
+lc.update(0.02);
+assert(lc.laserState === 1 || lc.laserState === 0, 'lancer update 无异常 (state=' + lc.laserState + ')');
+
 console.log('\n[19] v0.8 新怪 + 敌弹渲染路径');
 // t7 预警/突进两态 + t8 蓄能态渲染
 var rip2 = new G.Entities.Alien('t7', 360, 400); rip2._dashTele = 0.3; rip2.draw(makeCtx());

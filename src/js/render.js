@@ -93,9 +93,13 @@
   }
   // 按 pattern+boss 选贴图 key
   function ebulletKey(b) {
+    if (b.bulletTex) return b.bulletTex;       // v0.13:fire.bulletTex 显式指定弹图(如 bulwark 重弹扇)
     if (b.isBoss) return 'ebullet-boss';
     if (b.pattern === 'ring') return 'ebullet-ring';
     if (b.pattern === 'spiral') return 'enemy-bullet';
+    if (b.pattern === 'orb') return 'ebullet-orb';       // v0.13:t11 球状弹
+    if (b.pattern === 'shock') return 'ebullet-shock';   // v0.13:t12 震荡波
+    if (b.pattern === 'split') return 'ebullet-ring';    // v0.12:t16 死亡环(复用 ring 图)
     return 'ebullet-aimed';
   }
 
@@ -611,6 +615,30 @@
       var n = G.Config.SHIPS[t].turrets || 0;
       if (n <= 0) return;     // Lv1 无副炮
       var col = G.Config.TURRET.color;
+      // v0.13:优先用 wing-drone 伴飞小飞机贴图(机头朝上),缺图退回原炮管座。
+      var wingTex = getShipTex ? null : null;
+      if (typeof Image !== 'undefined' && G.Assets && G.Assets.get('wing-drone')) {
+        var img = G.Assets.get('wing-drone');
+        var iw = img.naturalWidth || 128, ih = img.naturalHeight || 128;
+        var sz = r * 0.95;   // 伴飞机尺寸(比主飞船小)
+        var sx = sz / Math.max(iw, ih);
+        var dw = iw * sx, dh = ih * sx;
+        var drawWing = function (ox) {
+          ctx.save();
+          ctx.translate(ox, r * 0.05);   // 停在机翼位置(略前)
+          // 蓄能芯(发光,副炮弹色)
+          ctx.globalCompositeOperation = 'lighter';
+          drawGlow(ctx, col, 0, -dh * 0.45, sz * 0.12, 0.7);
+          ctx.globalCompositeOperation = 'source-over';
+          // 贴图本体(机头朝上)
+          ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+          ctx.restore();
+        };
+        if (n === 1) drawWing(0);
+        else { drawWing(-r * 0.65); drawWing(r * 0.65); }
+        return;
+      }
+      // 退回:程序化炮管座(原实现)
       var drawOne = function (ox) {
         var cy = r * 0.12;   // 副炮座中心(机翼前缘,避开主炮管 -1.3r 与驾驶舱 -0.55r)
         // 底座(金属梯形)+ 描边

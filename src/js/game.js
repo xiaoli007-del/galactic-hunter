@@ -641,11 +641,12 @@
       //   召唤仆从计 killCount(HUD 显示/连锁)但不推进 _bossProgress,防 Boss 战内连环触发下一个 Boss → 重叠。
       if (!a.isBoss && !a.isSummoned) this._bossProgress++;
       this.explode(a.x, a.y, a.def.color, C.FX.explosionParticles);
-      // 掉落金币
-      var drops = a.def.tier <= 2 ? 1 : (a.def.tier <= 4 ? 2 : 3);
-      for (var i = 0; i < drops; i++) {
-        this.coinsArr.push(new Ent.Coin(a.x + E.rand(-10, 10), a.y + E.rand(-10, 10), Math.ceil(a.def.coin / drops)));
-      }
+      // v0.13:金币直接结算进钱包(不再掉落 Coin 实体到屏幕)——玩家反馈实体金币在屏幕上太乱、
+      //   影响视野且曾与敌弹混淆。现击杀即得,留飘字+音效反馈;Coin 实体保留不实例化(渐进,不破坏代码)。
+      this.coins += a.def.coin;
+      this.save();   // 金币入账即存(掉落实体时曾是拾取时存,现提前到击杀时)
+      Snd && Snd.play('coin');
+      this.texts.push(new Ent.FloatingText(a.x, a.y - 12, '+' + a.def.coin + '金', '#ffd166', a.def.tier >= 5 ? 26 : 20));
       this.texts.push(new Ent.FloatingText(a.x, a.y, '+' + a.def.score, a.def.color, a.def.tier >= 5 ? 30 : 22));
       // v0.12:split 弹种(如 t16 晶簇)被击杀瞬间炸成圆环弹(独有死亡弹幕)
       if (a.def.fire && a.def.fire.pattern === 'split') {
@@ -657,6 +658,17 @@
             a.x + Math.cos(sa) * (a.radius + 4), a.y + Math.sin(sa) * (a.radius + 4),
             Math.cos(sa) * sf.speed, Math.sin(sa) * sf.speed, a.def.color, 'ring', false));
         }
+      }
+      // v0.13:elite-splitter 裂殖母体被击杀时分裂成 N 只小怪(受同屏上限约束)
+      if (a.mechanism === 'split' && a.def.splitType) {
+        for (var spi = 0; spi < (a.def.splitCount || 3); spi++) {
+          if (this.aliens.length >= C.WAVE.maxAliensOnScreen) break;
+          var sang = (spi / (a.def.splitCount || 3)) * Math.PI * 2;
+          var child = new Ent.Alien(a.def.splitType,
+            a.x + Math.cos(sang) * 30, a.y + Math.sin(sang) * 30);
+          this.aliens.push(child);
+        }
+        this.texts.push(new Ent.FloatingText(a.x, a.y - a.radius, '裂殖!', '#b14dff', 22));
       }
       // Boss 击杀:更大爆炸 + 胜利飘字
       if (a.isBoss) {
@@ -700,6 +712,43 @@
         this.aliens.push(summon);
       }
       this.texts.push(new Ent.FloatingText(boss.x, boss.y - boss.radius, '召唤!', '#c77dff', 20));
+    },
+
+    // v0.13:精英 carrier 召唤蜂群(drone-bee 小蜜蜂无人机)。蜂群作为召唤仆从,标记 isSummoned。
+    //   蜂群用独立实体类型(小型快速下冲),受同屏上限约束。
+    _eliteSummon: function (carrier) {
+      if (this.aliens.length >= C.WAVE.maxAliensOnScreen) return;
+      var st = carrier.def.summonType;
+      var sc = carrier.def.summonCount || 3;
+      for (var i = 0; i < sc; i++) {
+        if (this.aliens.length >= C.WAVE.maxAliensOnScreen) break;
+        var ang = (i / sc) * Math.PI * 2;
+        var bee = new Ent.Alien(st,
+          carrier.x + Math.cos(ang) * (carrier.radius + 16),
+          carrier.y + Math.sin(ang) * (carrier.radius + 16));
+        bee.isSummoned = true;   // 召唤仆从不推进 Boss 触发计数
+        this.aliens.push(bee);
+      }
+      this.texts.push(new Ent.FloatingText(carrier.x, carrier.y - carrier.radius, '蜂群出动!', '#ffd166', 20));
+      Snd && Snd.play('boss');
+    },
+    // v0.13:lancer 横扫激光命中检测(横扫中每帧调用)。激光是从 lancer 沿 laserAngle 方向的射线,
+    //   飞船在射线宽度内且距离≤beamLen → 走 ship.takeHit(护盾/hp/无敌帧自动兼容)。
+    _laserHit: function (lancer, f) {
+      var sx = this.ship.x, sy = this.ship.y;
+      var lx = lancer.x, ly = lancer.y;
+      var a = lancer.laserAngle;
+      // 飞船到激光射线的垂直距离(射线从 lancer 沿 (cos a, sin a) 发射)
+      var dx = sx - lx, dy = sy - ly;
+      var along = dx * Math.cos(a) + dy * Math.sin(a);   // 沿射线方向的投影(0~beamLen 内才命中)
+      if (along < 0 || along > (f.beamLen || 900)) return;
+      var perp = Math.abs(-dx * Math.sin(a) + dy * Math.cos(a));   // 垂直距离
+      if (perp < (f.beamWidth || 14) / 2 + this.ship.radius) {
+        if (this.ship.takeHit()) {
+          Snd && Snd.play('hit');
+          this.screenFlash = 0.25;
+        }
+      }
     },
 
     // —— v0.8 敌弹发射(由 Alien._updateFire 到点调用)——
@@ -755,15 +804,34 @@
           this.enemyBullets.push(eb);
         }
         alien.fireAngle += 0.4;
+      } else if (pat === 'orb') {
+        // v0.13:t11 水母——释放一堆球状弹(围绕怪散开,慢速下飘)
+        for (var oi = 0; oi < n; oi++) {
+          var oa = alien.fireAngle + (oi / n) * Math.PI * 2;
+          var oeb = new Ent.EnemyBullet(alien.x, alien.y, Math.cos(oa) * sp * 0.7, Math.sin(oa) * sp * 0.7 + 60, col, 'orb', boss);
+          this.enemyBullets.push(oeb);
+        }
+        alien.fireAngle += 0.5;
+      } else if (pat === 'shock') {
+        // v0.13:t12 机甲——震荡波(全圆均布膨胀弹,比 wave 更快扩散、更大)
+        for (var ki = 0; ki < n; ki++) {
+          var ka = alien.fireAngle + (ki / n) * Math.PI * 2;
+          var keb = new Ent.EnemyBullet(alien.x, alien.y, Math.cos(ka) * sp, Math.sin(ka) * sp, col, 'shock', boss);
+          keb.expand = true;
+          this.enemyBullets.push(keb);
+        }
+        alien.fireAngle += 0.5;
       }
     },
     // 生成一发敌弹(从怪物边缘出膛,避免在自身碰撞圈内生成)
     _spawnEBullet: function (alien, ang, sp, col, pattern, boss) {
       if (this.enemyBullets.length >= C.ENEMY_BULLET.maxOnScreen) return;
       var er = alien.radius + 4;
-      this.enemyBullets.push(new Ent.EnemyBullet(
+      var eb = new Ent.EnemyBullet(
         alien.x + Math.cos(ang) * er, alien.y + Math.sin(ang) * er,
-        Math.cos(ang) * sp, Math.sin(ang) * sp, col, pattern, boss));
+        Math.cos(ang) * sp, Math.sin(ang) * sp, col, pattern, boss);
+      if (alien.def.fire && alien.def.fire.bulletTex) eb.bulletTex = alien.def.fire.bulletTex;  // v0.13:显式弹图
+      this.enemyBullets.push(eb);
     },
 
     explode: function (x, y, color, n) {
@@ -911,6 +979,7 @@
       ctx.restore();
 
       for (var i = 0; i < this.aliens.length; i++) this.aliens[i].draw(ctx);
+      this._drawLasers(ctx);   // v0.13:elite-lancer 横扫激光束(画在怪物之上、敌弹之下)
       for (var pu = 0; pu < this.powerups.length; pu++) this.powerups[pu].draw(ctx);
       for (var eb3 = 0; eb3 < this.enemyBullets.length; eb3++) this.enemyBullets[eb3].draw(ctx);  // v0.8
       for (var j = 0; j < this.bullets.length; j++) this.bullets[j].draw(ctx);
@@ -918,6 +987,40 @@
       for (var e = 0; e < this.explosions.length; e++) this.explosions[e].draw(ctx);
       for (var m = 0; m < this.coinsArr.length; m++) this.coinsArr[m].draw(ctx);
       for (var n = 0; n < this.texts.length; n++) this.texts[n].draw(ctx);
+    },
+
+    // v0.13:绘制 elite-lancer 横扫激光束。蓄能期(状态1)画细预警线;横扫期(状态2)画粗光束。
+    //   激光从 lancer 沿 laserAngle 方向发射 beamLen 长;色用品红,蓄能细+暗,横扫粗+亮+辉光。
+    _drawLasers: function (ctx) {
+      for (var i = 0; i < this.aliens.length; i++) {
+        var a = this.aliens[i];
+        if (a.dead || a.mechanism !== 'lasersweep') continue;
+        var f = a._fireDef();
+        if (!f) continue;
+        var ang = a.laserAngle;
+        var len = f.beamLen || 900;
+        var ex = a.x + Math.cos(ang) * len, ey = a.y + Math.sin(ang) * len;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (a.laserState === 1) {
+          // 蓄能预警:细虚线 + 蓄能点
+          ctx.strokeStyle = 'rgba(255,77,210,0.5)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([8, 8]);
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (a.laserState === 2) {
+          // 横扫光束:外辉光 + 核心亮线
+          var bw = f.beamWidth || 14;
+          ctx.strokeStyle = 'rgba(255,77,210,0.35)';
+          ctx.lineWidth = bw * 2.2;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(ex, ey); ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,180,235,0.95)';
+          ctx.lineWidth = bw;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(ex, ey); ctx.stroke();
+        }
+        ctx.restore();
+      }
     },
 
     // —— 顶部 HUD + 底部升级栏 ——

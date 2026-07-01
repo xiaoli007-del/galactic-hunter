@@ -167,13 +167,20 @@
     this.dashTimer = 0;        // 冲刺倒计时
     this.dashing = 0;          // 冲刺剩余秒数(>0 时冲刺中)
     // v0.10.15:Boss 机制字段
-    this.mechanism = def.mechanism || null;   // shield/summon/absorb/wave
-    this.shield = def.shield || 0;            // Boss 护盾(>0 时吸收伤害不扣血)
+    this.mechanism = def.mechanism || null;   // shield/summon/absorb/wave/split/lasersweep
+    this.shield = def.shield || 0;            // Boss/精英护盾(>0 时吸收伤害不扣血)
     this.maxShield = def.shield || 0;
     this.shieldRegenTimer = 0;
     this.waveState = 0;         // 位移冲击波状态机:0 待机/1 预警/2 冲刺/3 回位
     this.waveTimer = 0;          // 状态计时
     this.waveTargetX = 0;       // 冲刺目标 X
+    // v0.13:精英怪字段
+    this.elite = def.elite === true;          // 精英标记(区别普通怪,渲染/掉落/机制用)
+    this.eliteShieldRegen = def.shieldRegen || 0;  // bulwark 护盾回充间隔(>0 时盾未满定期回充)
+    this.summonTimer2 = 0;      // carrier 召唤蜂群倒计时(独立于 Boss summonTimer)
+    this.laserState = 0;        // lancer 横扫激光状态机:0 待机/1 蓄能预警/2 横扫中
+    this.laserTimer = 0;        // 激光状态计时
+    this.laserAngle = -Math.PI / 2;  // 激光当前朝向(横扫时变化)
     // 特殊行为(v0.3):def.behavior
     this.behavior = def.behavior || null;
     this.blinkCd = 0;          // 幽灵闪现冷却(防连击)
@@ -268,6 +275,55 @@
 
     // v0.8 敌弹发射(t8 守卫者,及非冲刺态的 t9/t10 Boss):放在 Boss 块之后,bossStage 已更新。
     this._updateFire(dt);
+
+    // v0.13:精英怪独有机制(非 boss 路径)。bulwark 护盾回充 / carrier 召唤蜂群 /
+    //   lancer 悬停 + 横扫激光。dash 精英(juggernaut)走下面的 behavior==='dash' 分支。
+    if (this.elite) {
+      // bulwark:护盾未满时定期回满(盾在时 takeDamage 走 shield 分支,需先破盾才能伤血)
+      if (this.eliteShieldRegen > 0 && this.shield < this.maxShield) {
+        this.shieldRegenTimer -= dt;
+        if (this.shieldRegenTimer <= 0) {
+          this.shield = this.maxShield;   // 回满护盾(整层)
+          this.shieldRegenTimer = this.eliteShieldRegen;
+        }
+      }
+      // lancer:悬停固定 + 横扫激光状态机(蓄能预警→横扫→待机循环)
+      if (this.mechanism === 'lasersweep') {
+        var f2 = this._fireDef();
+        var BE = G.Config.BEHAVIOR;
+        // 悬停锚点:缓动吸附到 (当前X, eliteHoverY),到位后保持
+        var hY = BE.eliteHoverY;
+        this.x += (Math.max(this.radius, Math.min(G.Config.WIDTH - this.radius, this.x)) - this.x) * Math.min(1, dt * 3);
+        this.y += (hY - this.y) * Math.min(1, dt * 3);
+        this.angle = Math.PI;   // 朝下
+        // 状态机推进
+        this.laserTimer -= dt;
+        if (this.laserState === 0 && this.laserTimer <= 0) {        // 待机→蓄能
+          this.laserState = 1; this.laserTimer = f2.charge;
+        } else if (this.laserState === 1 && this.laserTimer <= 0) { // 蓄能→横扫(从左到右)
+          this.laserState = 2; this.laserTimer = f2.sweepDur;
+          this.laserAngle = -Math.PI;   // 从朝左开始扫向朝右
+        } else if (this.laserState === 2) {
+          // 横扫:laserAngle 从 -π(左)线性到 0(右),用 sweepDur 线性插值
+          var prog = 1 - (this.laserTimer / f2.sweepDur);
+          this.laserAngle = -Math.PI + prog * Math.PI;
+          // 横扫中持续对飞船造成伤害(委托 Game 检测激光命中)
+          if (G.Game && G.Game._laserHit) G.Game._laserHit(this, f2);
+          if (this.laserTimer <= 0) { this.laserState = 0; this.laserTimer = f2.every - f2.sweepDur; }
+        }
+        return;   // lancer 不走默认下移
+      }
+    }
+
+    // v0.13:summon 机制(t17 蜂巢炮台 + elite-carrier 蜂群母舰 都召唤 drone-bee)。
+    //   非 boss 的召唤怪在此处理(Elite 和普通怪共用)。
+    if (!this.isBoss && this.mechanism === 'summon' && this.def.summonType === 'drone-bee') {
+      this.summonTimer2 -= dt;
+      if (this.summonTimer2 <= 0) {
+        this.summonTimer2 = this.def.summonEvery || 5.0;
+        if (G.Game && G.Game._eliteSummon) G.Game._eliteSummon(this);
+      }
+    }
 
     // 闪现冷却递减
     if (this.blinkCd > 0) this.blinkCd -= dt;
@@ -451,8 +507,9 @@
     this.radius = G.Config.ENEMY_BULLET.radius;
     this.color = color || G.Config.ENEMY_BULLET.color;
     this.damage = G.Config.ENEMY_BULLET.damage;
-    this.pattern = pattern || 'aimed';   // v0.10.11:aimed/spiral/ring,渲染按此选贴图
+    this.pattern = pattern || 'aimed';   // v0.10.11:aimed/spiral/ring/fan/cross/orb/shock,渲染按此选贴图
     this.isBoss = !!isBoss;              // v0.10.11:Boss 弹用重弹贴图
+    this.bulletTex = null;               // v0.13:显式弹图覆盖(如 bulwark 重弹扇用 ebullet-boss)
     this.expand = false;                  // v0.10.15:wave 冲击波弹膨胀标记
     this.trail = [];
     this.dead = false;
