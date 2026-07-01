@@ -79,36 +79,15 @@
     if (typeof Image === 'undefined' || !G.Assets) return null;
     var img = G.Assets.get(key);
     if (!img) return null;
-    var w = img.naturalWidth || 256, h = img.naturalHeight || 256;
-    // 先画到临时 canvas 读像素,找主体(alpha>40)的边界框
-    var tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
-    var tx = tmp.getContext('2d');
-    tx.drawImage(img, 0, 0);
-    var data;
-    try { data = tx.getImageData(0, 0, w, h).data; } catch (e) { data = null; }
-    var minX = 0, minY = 0, maxX = w - 1, maxY = h - 1;
-    if (data) {
-      var found = false;
-      minX = w; minY = h; maxX = 0; maxY = 0;
-      for (var y = 0; y < h; y += 2) {
-        for (var x = 0; x < w; x += 2) {
-          if (data[(y * w + x) * 4 + 3] > 40) {
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-            found = true;
-          }
-        }
-      }
-      if (!found) { minX = 0; minY = 0; maxX = w - 1; maxY = h - 1; }
-    }
-    var cw = maxX - minX + 1, ch = maxY - minY + 1;
+    // v0.11.1:贴图已由 strip-bg.js 在工具侧裁剪到主体边界(去四周半透明光晕),
+    //   运行时直接等比缩存到 96px,不再读像素 —— 彻底绕开 file:// 下 canvas tainted
+    //   致 getImageData 失败、裁剪被跳过、整图(主体仅占 2-5%)缩成"透明壳包裹弹丸"的问题。
+    var w = img.naturalWidth || 96, h = img.naturalHeight || 96;
     var SZ = 96;
     var c = document.createElement('canvas'); c.width = SZ; c.height = SZ;
     var cx = c.getContext('2d');
-    var s = SZ / Math.max(cw, ch);
-    var dw = cw * s, dh = ch * s;
-    // 从原图主体区域裁剪缩放到缓存(只含弹丸本体,去四周半透明外壳)
-    cx.drawImage(img, minX, minY, cw, ch, (SZ - dw) / 2, (SZ - dh) / 2, dw, dh);
+    var s = SZ / Math.max(w, h);
+    cx.drawImage(img, 0, 0, w, h, (SZ - w * s) / 2, (SZ - h * s) / 2, w * s, h * s);
     _eBulletTexCache[key] = c;
     return c;
   }

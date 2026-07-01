@@ -185,7 +185,7 @@
       spawnIntervalBase: 0.85,   // 初始刷新间隔
       spawnIntervalMin: 0.28,    // 最快刷新间隔
       spawnIntervalDecay: 0.92,  // 每档刷新间隔衰减
-      bossEveryKills: 25,        // v0.10.11:每 N 击杀触发 Boss(60→25,让 t6/t9/t10 三个 Boss 频繁轮换,不再老同一个)
+      bossEveryKills: 45,        // v0.11.1:每 N 击杀触发 Boss(25→45 降频;8 Boss 轮换后 25 太密,Boss+召唤仆从都计 killCount 易连环触发)
       bossAlertDuration: 4.0,    // v0.10.7:Boss 入场前警报持续秒(3-4s 营造压迫感,期间 Boss 不入场)
       maxAliensOnScreen: 26,
       // v0.8:Boss 轮换 —— 每个触发点按序循环 t6→t9→t10→t6…,避免单一 Boss。

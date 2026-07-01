@@ -48,6 +48,7 @@
     _bossPending: false,      // v0.10.7:Boss 警报中、尚未入场(警报结束后才召唤)
     _bossPendingType: null,   // v0.10.7:待入场的 Boss 类型(pending 期间暂存)
     _hadBoss: false,          // v0.10.7:上一帧是否有活 Boss(用于死亡下降沿复位 _bossSpawned)
+    _bossCooldown: 0,         // v0.11.1:Boss 死亡后冷却秒(期间不触发新 Boss,防连触发)
 
     init: function () {
       this.loadSave();
@@ -129,6 +130,7 @@
       this._bossPending = false;            // v0.10.7:每局重置 Boss 警报/待入场状态
       this._bossPendingType = null;
       this._hadBoss = false;                // v0.10.7:每局重置 Boss 在场追踪
+      this._bossCooldown = 0;               // v0.11.1:每局重置 Boss 冷却
       this.bossAlert = 0;                   // v0.10.7:每局重置警报
       this.activeSkill = null;             // v0.5:每局重置技能(开局用武器默认弹道)
       this.turretTimer = 0;               // v0.10:副炮计时归零(每局重置,与主开火解耦)
@@ -396,7 +398,9 @@
       //   ① 击杀达阈值且当前无 Boss/无 pending → 进入 _bossPending:启动警报(4s),暂不召唤。
       //   ② 警报期间不召唤 Boss(营造压迫感);bossAlert 归零才 spawnAlien 入场。
       //   ③ Boss 在场或 pending 期间抑制新触发;Boss 死亡后(_anyBossAlive=false)才复位 _bossSpawned。
-      if (this.killCount > 0 && this.killCount % C.WAVE.bossEveryKills === 0 && !this._bossSpawned && !this._bossPending) {
+      //   v0.11.1:_bossCooldown 死亡后冷却 6s,防 Boss+召唤仆从都计 killCount 致连环触发/视觉堆叠。
+      if (this._bossCooldown > 0) this._bossCooldown -= dt;
+      if (this.killCount > 0 && this.killCount % C.WAVE.bossEveryKills === 0 && !this._bossSpawned && !this._bossPending && this._bossCooldown <= 0) {
         var rot = C.WAVE.bossRotation;
         this._bossPendingType = rot[this._bossIdx % rot.length];
         this._bossIdx++;
@@ -420,6 +424,7 @@
       var bossAliveNow = this._anyBossAlive();
       if (this._hadBoss && !bossAliveNow && !this._bossPending) {
         this._bossSpawned = false;
+        this._bossCooldown = 6.0;   // v0.11.1:Boss 死亡后冷却 6s 才允许下一轮触发(防连触发/视觉堆叠)
       }
       this._hadBoss = bossAliveNow;
 

@@ -81,11 +81,40 @@ async function processOne(file, tol) {
     }
   }
   ctx.putImageData(imgData, 0, 0);
-  // 输出 PNG(带 alpha)
-  var buf = canvas.toBuffer('image/png');
-  fs.writeFileSync(out, buf);
-  console.log('  ✓ ' + file + ' ' + w + 'x' + h + ' → 背景色 rgb(' + bg.r + ',' + bg.g + ',' + bg.b +
-    ') ' + (det.uniform ? '背景均匀' : '⚠背景不均匀(可能抠不净)') + ' 容差' + tol);
+
+  // v0.11.1:裁剪到主体边界(alpha>40 的 bounding box),去四周半透明光晕羽化。
+  //   AI 生图原图主体常仅占 2-5%,四周大片半透明光晕在运行时缩成小弹后成"透明壳"包裹弹丸。
+  //   在抠图工具侧裁掉,输出的就是干净弹丸本体 —— 运行时只缩放不读像素,彻底绕开 file://
+  //   下 canvas tainted 导致 getImageData 失败的问题(getEBulletTex 运行时裁剪在 file:// 下失效)。
+  var bData = ctx.getImageData(0, 0, w, h).data;
+  var minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+  for (var y = 0; y < h; y += 2) {
+    for (var x = 0; x < w; x += 2) {
+      if (bData[(y * w + x) * 4 + 3] > 40) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        found = true;
+      }
+    }
+  }
+  var outBuf;
+  if (found) {
+    var pad = Math.round((maxX - minX + maxY - minY) * 0.06) + 6;   // 留 6%+6px 边距,防贴边
+    var cx0 = Math.max(0, minX - pad), cy0 = Math.max(0, minY - pad);
+    var cw = Math.min(w, maxX + pad) - cx0, ch = Math.min(h, maxY + pad) - cy0;
+    var side = Math.max(cw, ch);   // 正方形输出(运行时 drawImage 等比不变形)
+    var c2 = createCanvas(side, side);
+    var c2x = c2.getContext('2d');
+    c2x.drawImage(canvas, cx0, cy0, cw, ch, (side - cw) / 2, (side - ch) / 2, cw, ch);
+    outBuf = c2.toBuffer('image/png');
+    console.log('  ✓ ' + file + ' ' + w + 'x' + h + ' → 裁剪主体 ' + cw + 'x' + ch + '(原主体占 ' +
+      (((maxX - minX + 1) * (maxY - minY + 1)) * 100 / (w * h)).toFixed(1) + '%) → ' + side + 'x' + side +
+      ' 背景rgb(' + bg.r + ',' + bg.g + ',' + bg.b + ') ' + (det.uniform ? '均匀' : '⚠不均匀') + ' 容差' + tol);
+  } else {
+    outBuf = canvas.toBuffer('image/png');
+    console.log('  ⚠ ' + file + ' 未检测到主体,按原尺寸输出 ' + w + 'x' + h);
+  }
+  fs.writeFileSync(out, outBuf);
 }
 
 (async () => {
