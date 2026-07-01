@@ -1470,12 +1470,16 @@
     bullet: function (ctx, b) {
       var fx = b.skill && b.skill.fx;
       var wlvl = Math.min(b.weaponLevel || 1, 5);
+      // v0.13.2:强化前期色彩可见度——给每级单独的光晕半径/透明度(gR/gA)和拖尾宽/透明度(tw/ta)。
+      //   旧版 Lv1-4 光晕统一 0.35/0.22、拖尾统一 1.4/0.4,前期青/绿和紫色一样暗,紫色又因尺寸最大最显眼,
+      //   观感偏"全紫"。现让 Lv1/2 光晕与拖尾比 Lv3 更亮更粗,前期色彩跳出来稀释紫色主导;
+      //   尺寸仍随级递增(scale),等级 progression 靠尺寸读,不被破坏。
       var LVL = [
-        { scale: 1.00, glow: '#5ad1ff' },  // Lv1 脉冲激光(青)
-        { scale: 1.18, glow: '#7df0c0' },  // Lv2 双联激光(绿)
-        { scale: 1.40, glow: '#c77dff' },  // Lv3 等离子炮(紫)
-        { scale: 1.65, glow: '#ffd166' },  // Lv4 散射波(金)
-        { scale: 2.10, glow: '#ff5d8f' },  // Lv5 量子湮灭(粉)
+        { scale: 1.00, glow: '#5ad1ff', gR: 0.45, gA: 0.34, tw: 1.7, ta: 0.55 },  // Lv1 脉冲激光(青)
+        { scale: 1.18, glow: '#7df0c0', gR: 0.45, gA: 0.34, tw: 1.7, ta: 0.55 },  // Lv2 双联激光(绿)
+        { scale: 1.40, glow: '#c77dff', gR: 0.40, gA: 0.26, tw: 1.4, ta: 0.40 },  // Lv3 等离子炮(紫)
+        { scale: 1.65, glow: '#ffd166', gR: 0.48, gA: 0.36, tw: 1.5, ta: 0.45 },  // Lv4 散射波(金)
+        { scale: 2.10, glow: '#ff5d8f', gR: 0.55, gA: 0.40, tw: 1.6, ta: 0.50 },  // Lv5 量子湮灭(粉)
       ];
       var ld = LVL[wlvl - 1];
       var isLv5 = wlvl === 5;
@@ -1489,9 +1493,9 @@
       if (b.trail.length > 1) {
         ctx.globalCompositeOperation = 'source-over';
         ctx.strokeStyle = glowColor;
-        ctx.lineWidth = br * (fx === 'laser' ? 2.8 : fx ? 2.0 : 1.4);
+        ctx.lineWidth = br * (fx === 'laser' ? 2.8 : fx ? 2.0 : ld.tw);
         ctx.lineCap = 'round';
-        ctx.globalAlpha = fx === 'laser' ? 0.5 : fx ? 0.35 : 0.4;
+        ctx.globalAlpha = fx === 'laser' ? 0.5 : fx ? 0.35 : ld.ta;
         ctx.beginPath();
         ctx.moveTo(b.trail[0].x, b.trail[0].y);
         for (var k = 1; k < b.trail.length; k++) ctx.lineTo(b.trail[k].x, b.trail[k].y);
@@ -1505,9 +1509,10 @@
       var btex = getBulletTex(bkey);
       if (btex) {
         var bs = br * 6.0 * bsizeScale;
-        // 光晕:lighter drawGlow 画完即复位(不残留到贴图),单层克制
+        // 光晕:lighter drawGlow 画完即复位(不残留到贴图),单层克制。半径/透明度按级(ld.gR/gA),
+        //   Lv1/2 调亮以强化前期色彩,Lv5 仍叠白心。
         ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, glowColor, b.x, b.y, bs * (isLv5 ? 0.55 : 0.35), isLv5 ? 0.4 : 0.22);
+        drawGlow(ctx, glowColor, b.x, b.y, bs * ld.gR, ld.gA);
         if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.28, 0.35);
         // 贴图本体:source-over 干净画(关键——lighter 会把贴图漂白糊成方块)
         ctx.globalCompositeOperation = 'source-over';
