@@ -265,15 +265,17 @@
         if (this.state === STATE.PLAYING) { this._pause(); return; }
         if (this.state === STATE.PAUSED) { this._resume(); return; }
       }
-      // 调试:按数字键 1-5 直接把船舰设为对应等级 + 金币拉满(检视各级飞船贴图用)。
-      //   不调武器/防御,只切飞船;金币拉满方便你在底栏继续手动升武器。
+      // 调试:按数字键 1-5 同时切【船舰等级】+【武器等级】为对应级 + 金币拉满。
+      //   v0.13.2:武器等级也跟着切——子弹贴图(bullet1-5)按 weaponLevel 选色,
+      //   只切船舰不切武器时子弹永远是同一档,看不出 5 级弹的颜色/造型差异。
       for (var lvl = 1; lvl <= 5; lvl++) {
-        if (P.isKeyJustPressed(String(lvl)) && this.shipLevel !== lvl) {
+        if (P.isKeyJustPressed(String(lvl)) && (this.shipLevel !== lvl || this.weaponLevel !== lvl)) {
           this.coins = 999999;             // 拉满金币
           this.shipLevel = lvl;
+          this.weaponLevel = lvl;          // 武器等级同步切,子弹贴图随之变(bullet{lvl})
           this._syncShipVisual();
           this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 70,
-            '🔧 船舰 Lv' + lvl + ' ' + C.SHIPS[lvl].name, C.SHIPS[lvl].glow, 26));
+            '🔧 Lv' + lvl + ' ' + C.SHIPS[lvl].name + ' · ' + C.WEAPONS[lvl].name, C.WEAPONS[lvl].color, 26));
           this.screenFlash = 0.2;
           break;
         }
