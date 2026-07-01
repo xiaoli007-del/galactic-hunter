@@ -274,6 +274,7 @@
           this.shipLevel = lvl;
           this.weaponLevel = lvl;          // 武器等级同步切,子弹贴图随之变(bullet{lvl})
           this._syncShipVisual();
+          this.bullets.length = 0;         // v0.13.2:清掉屏幕残留旧弹,避免多级弹混飞观感"乱"
           this.texts.push(new Ent.FloatingText(this.ship.x, this.ship.y - 70,
             '🔧 Lv' + lvl + ' ' + C.SHIPS[lvl].name + ' · ' + C.WEAPONS[lvl].name, C.WEAPONS[lvl].color, 26));
           this.screenFlash = 0.2;
