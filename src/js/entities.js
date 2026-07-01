@@ -511,10 +511,12 @@
     this.isBoss = !!isBoss;              // v0.10.11:Boss 弹用重弹贴图
     this.bulletTex = null;               // v0.13:显式弹图覆盖(如 bulwark 重弹扇用 ebullet-boss)
     this.expand = false;                  // v0.10.15:wave 冲击波弹膨胀标记
+    this.life = 0;                       // v0.13:存活计时(expand 弹减速后不出界,靠 life 上限回收,防糊屏)
     this.trail = [];
     this.dead = false;
   }
   EnemyBullet.prototype.update = function (dt) {
+    this.life += dt;
     this.trail.push({ x: this.x, y: this.y });
     if (this.trail.length > G.Config.ENEMY_BULLET.trail) this.trail.shift();
     this.x += this.vx * dt;
@@ -523,6 +525,8 @@
     if (this.expand) {
       this.radius = Math.min(40, this.radius + dt * 30);
       this.vx *= 0.98; this.vy *= 0.98;
+      // v0.13:expand 弹(震荡波/冲击波)减速后不会出界,加 1.3s 寿命上限强制回收,否则糊屏不消失
+      if (this.life > 1.3) this.dead = true;
     }
     var cfg = G.Config;
     if (this.x < -40 || this.x > cfg.WIDTH + 40 || this.y < -40 || this.y > cfg.HEIGHT + 40) this.dead = true;

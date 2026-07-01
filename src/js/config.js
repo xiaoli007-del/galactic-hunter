@@ -80,7 +80,7 @@
       t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff', behavior: 'blink',   // 受击概率闪现回避
             fire: { pattern: 'spiral', every: 0.7, count: 2, spiralStep: 0.5, speed: 240, telegraph: 0 } },  // 闪现时双臂慢螺旋
       t5: { name: '精英',   tier: 5, hp: 20,  score: 300,  coin: 60,  radius: 40, speed: 60,  spawnWeight: 5,  color: '#ff8a3d', behavior: 'spiral' },    // 螺旋移动 + 周期冲刺
-      t6: { name: 'Boss',   tier: 6, hp: 550, score: 1500, coin: 300, radius: 115, speed: 38,  spawnWeight: 2,  color: '#ff3d6e', behavior: null, boss: true, bossVisScale: 1.88,   // 固定位 + 三阶段弹幕(v0.12 血量 200→550,首 Boss 不再秒爆)
+      t6: { name: 'Boss',   tier: 6, hp: 550, score: 1500, coin: 300, radius: 115, speed: 38,  spawnWeight: 0,  color: '#ff3d6e', behavior: null, boss: true, bossVisScale: 1.88,   // 固定位 + 三阶段弹幕(v0.13 spawnWeight 2→0:Boss 不入随机刷新池,只由阈值触发,根除与触发 Boss 重叠)
             fire: { stages: {
               1: { pattern: 'aimed',  every: 2.2, count: 3, spread: 0.22, speed: 300, telegraph: 0.5 },
               2: { pattern: 'spiral', every: 0.22, count: 3, spiralStep: 0.4, speed: 270, telegraph: 0 },

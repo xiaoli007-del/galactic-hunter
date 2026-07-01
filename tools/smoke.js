@@ -857,6 +857,38 @@ assert(lc.laserState === 0 && lc.mechanism === 'lasersweep', 'lancer 初始 lase
 lc.update(0.02);
 assert(lc.laserState === 1 || lc.laserState === 0, 'lancer update 无异常 (state=' + lc.laserState + ')');
 
+console.log('\n[18e] v0.13.1 修复 — Boss 不入随机池 + expand 弹寿命回收');
+// t6 spawnWeight 改 0(原 2:作为 Boss 却进随机刷新池,与触发 Boss 重叠的根因)
+assert(G.Config.ALIENS.t6.spawnWeight === 0, 't6 Boss spawnWeight=0(不入随机刷新池,只由阈值触发)');
+assert(G.Config.ALIENS.t6.boss === true, 't6 仍是 Boss');
+// spawnAlien 随机池过滤 Boss:权重表里 Boss 类型权重为 0
+Game.startGame();
+var wkeys = Object.keys(G.Config.ALIENS);
+var bossInPool = wkeys.some(function (k) {
+  // 模拟 spawnAlien 的权重计算:Boss 类型返回 0,不应被选中
+  return G.Config.ALIENS[k].boss && G.Config.ALIENS[k].spawnWeight > 0;
+});
+assert(bossInPool === false, '所有 Boss 类型 spawnWeight=0(随机刷新池不含 Boss)');
+// 硬护栏:已有活 Boss 时,强制刷 Boss 被拒绝(根除任何路径重叠)
+Game.startGame();
+Game._bossRotationOffset = 0;
+Game._bossProgress = Game._nextBossAt;
+Game.updateWaves(0.01); Game.bossAlert = 0; Game.updateWaves(0.01);   // 触发并入场一个 Boss
+var bossCount1 = Game.aliens.filter(function (a) { return a.isBoss; }).length;
+assert(bossCount1 === 1, '触发后场上 1 个 Boss (得 ' + bossCount1 + ')');
+Game.spawnAlien(0, 't9');   // 强制再刷一个 Boss → 应被硬护栏拒绝
+var bossCount2 = Game.aliens.filter(function (a) { return a.isBoss; }).length;
+assert(bossCount2 === 1, '已有 Boss 时强制刷 Boss 被拒绝(硬护栏,仍 ' + bossCount2 + ' 个)');
+// expand 弹(震荡波/冲击波)寿命回收:减速后不出界,1.3s 后强制 dead(防糊屏)
+var shock = new G.Entities.EnemyBullet(360, 500, 0, 0, '#fff', 'shock', false);
+shock.expand = true;
+for (var fr = 0; fr < 70; fr++) shock.update(0.02);   // 推进 1.4s
+assert(shock.dead === true, 'expand 弹 1.3s 后强制回收(防糊屏不消失) (life=' + shock.life.toFixed(2) + ', dead=' + shock.dead + ')');
+// 普通弹不受寿命影响(靠出界回收)
+var normal = new G.Entities.EnemyBullet(360, 100, 0, 300, '#fff', 'aimed', false);
+normal.update(0.02);
+assert(normal.dead === false && normal.life < 1.3, '普通弹不受 expand 寿命影响 (life=' + normal.life.toFixed(2) + ')');
+
 console.log('\n[19] v0.8 新怪 + 敌弹渲染路径');
 // t7 预警/突进两态 + t8 蓄能态渲染
 var rip2 = new G.Entities.Alien('t7', 360, 400); rip2._dashTele = 0.3; rip2.draw(makeCtx());

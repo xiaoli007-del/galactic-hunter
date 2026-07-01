@@ -280,6 +280,8 @@
       }
       // 调试:按 B 键立即召唤下一个 Boss + 警报(检视放大后的 Boss + EVA 警报用)
       if (P.isKeyJustPressed('b')) {
+        if (this._anyBossAlive()) { /* v0.13:已有 Boss 时按 B 不再叠加(防调试制造重叠) */ }
+        else {
         var rot2 = C.WAVE.bossRotation;
         var bt = rot2[(this._bossRotationOffset + this._bossIdx) % rot2.length];
         this._bossIdx++;
@@ -288,6 +290,7 @@
         var bDef2 = C.ALIENS[bt];
         this.texts.push(new Ent.FloatingText(C.WIDTH / 2, C.HEIGHT / 2, '⚠ ' + bDef2.name + ' 出现', bDef2.color, 38));
         Snd && Snd.play('boss');
+        }
       }
       if (this.state !== STATE.PLAYING) return;
 
@@ -462,9 +465,14 @@
     },
 
     spawnAlien: function (tier, forceType) {
+      // v0.13:硬护栏——强制刷 Boss 时,若场上已有活 Boss,直接跳过(根除任何路径的 Boss 重叠)。
+      //   即便触发逻辑有漏洞,这里兜底保证永远不会同时存在两个 Boss。
+      if (forceType && C.ALIENS[forceType] && C.ALIENS[forceType].boss && this._anyBossAlive()) return;
       var keys = Object.keys(C.ALIENS);
       var weights = keys.map(function (k) {
         var d = C.ALIENS[k];
+        // v0.13:Boss 类型(t6/t9/t10/5新)不入随机刷新池——只由阈值触发,避免随机刷出 Boss 与触发 Boss 重叠
+        if (d.boss) return 0;
         var mul = 1;
         // 难度档越高,高级怪越常见
         if (d.tier >= 3) mul *= 1 + 0.35 * tier;
