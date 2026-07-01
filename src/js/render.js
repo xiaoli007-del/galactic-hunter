@@ -24,12 +24,16 @@
     if (typeof Image === 'undefined' || !G.Assets) return null;   // node smoke 环境
     var img = G.Assets.get(key);
     if (!img) return null;
+    // v0.13.2:按贴图自身宽高比缩存(不强制正方形)——子弹是细长竖条,
+    //   旧版按 max(w,h) 做正方形会把长条横向大量留白,缩到 30px 显示时有效宽度仅 ~6px 糊成方块。
+    //   现按高度缩到 96px、宽度等比,drawImage 时也用贴图原比例,主体填满贴图。
     var SZ = 96;
-    var c = document.createElement('canvas'); c.width = SZ; c.height = SZ;
+    var iw = img.naturalWidth, ih = img.naturalHeight;
+    var s = SZ / Math.max(iw, ih);
+    var dw = Math.max(1, Math.round(iw * s)), dh = Math.max(1, Math.round(ih * s));
+    var c = document.createElement('canvas'); c.width = dw; c.height = dh;
     var cx = c.getContext('2d');
-    var s = SZ / Math.max(img.naturalWidth, img.naturalHeight);
-    var dw = img.naturalWidth * s, dh = img.naturalHeight * s;
-    cx.drawImage(img, (SZ - dw) / 2, (SZ - dh) / 2, dw, dh);
+    cx.drawImage(img, 0, 0, dw, dh);
     _bulletCache[key] = c;
     return c;
   }
@@ -1509,15 +1513,19 @@
       var bkey = b.turret ? 'turret-bullet' : (fx ? ('bullet-' + fx) : ('bullet' + wlvl));
       var btex = getBulletTex(bkey);
       if (btex) {
-        var bs = br * 6.0 * bsizeScale;
+        var bs = br * 9.0 * bsizeScale;   // v0.13.2:6.0→9.0,精细贴图需更大显示尺寸才不糊(Lv1 原30px→现45px)
         // 光晕:lighter drawGlow 画完即复位(不残留到贴图),单层克制。半径/透明度按级(ld.gR/gA),
         //   Lv1/2 调亮以强化前期色彩,Lv5 仍叠白心。
         ctx.globalCompositeOperation = 'lighter';
         drawGlow(ctx, glowColor, b.x, b.y, bs * ld.gR, ld.gA);
         if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.28, 0.35);
-        // 贴图本体:source-over 干净画(关键——lighter 会把贴图漂白糊成方块)
+        // 贴图本体:source-over 干净画(关键——lighter 会把贴图漂白糊成方块)。
+        // v0.13.2:按贴图自身宽高比绘制(贴图已是紧裁的长条形,非正方形)——
+        //   bs 作为高度基准,宽度按贴图比例 bw=bs*aspect,主体填满绘制区不再糊成方块。
         ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(btex, b.x - bs / 2, b.y - bs / 2, bs, bs);
+        var _bw = btex.width, _bh = btex.height;
+        var bh = bs, bw = bs * (_bw / _bh);
+        ctx.drawImage(btex, b.x - bw / 2, b.y - bh / 2, bw, bh);
         ctx.restore();
         return;
       }

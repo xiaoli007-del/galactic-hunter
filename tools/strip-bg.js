@@ -102,13 +102,16 @@ async function processOne(file, tol) {
     var pad = Math.round((maxX - minX + maxY - minY) * 0.06) + 6;   // 留 6%+6px 边距,防贴边
     var cx0 = Math.max(0, minX - pad), cy0 = Math.max(0, minY - pad);
     var cw = Math.min(w, maxX + pad) - cx0, ch = Math.min(h, maxY + pad) - cy0;
-    var side = Math.max(cw, ch);   // 正方形输出(运行时 drawImage 等比不变形)
-    var c2 = createCanvas(side, side);
+    // v0.13.2:按主体实际 bbox 紧裁(不再强行正方形)。子弹是细长竖条,旧版取 max(cw,ch)
+    //   做正方形会横向大量留白,运行时缩到 30px 显示时有效宽度仅 ~6px 糊成像素方块。
+    //   圆形弹(敌弹)紧裁后近方形,效果与原正方形无异;长条弹(玩家弹)紧裁后主体填满。
+    //   运行时 getBulletTex/drawImage 均按贴图自身宽高比缩放(见 render.js)。
+    var c2 = createCanvas(cw, ch);
     var c2x = c2.getContext('2d');
-    c2x.drawImage(canvas, cx0, cy0, cw, ch, (side - cw) / 2, (side - ch) / 2, cw, ch);
+    c2x.drawImage(canvas, cx0, cy0, cw, ch, 0, 0, cw, ch);
     outBuf = c2.toBuffer('image/png');
-    console.log('  ✓ ' + file + ' ' + w + 'x' + h + ' → 裁剪主体 ' + cw + 'x' + ch + '(原主体占 ' +
-      (((maxX - minX + 1) * (maxY - minY + 1)) * 100 / (w * h)).toFixed(1) + '%) → ' + side + 'x' + side +
+    console.log('  ✓ ' + file + ' ' + w + 'x' + h + ' → 紧裁主体 ' + cw + 'x' + ch + '(原主体占 ' +
+      (((maxX - minX + 1) * (maxY - minY + 1)) * 100 / (w * h)).toFixed(1) + '%)' +
       ' 背景rgb(' + bg.r + ',' + bg.g + ',' + bg.b + ') ' + (det.uniform ? '均匀' : '⚠不均匀') + ' 容差' + tol);
   } else {
     outBuf = canvas.toBuffer('image/png');
