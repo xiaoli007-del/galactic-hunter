@@ -703,7 +703,9 @@
       var wob = a.wob || 0;
       // v0.10.7/v0.10.11:Boss 渲染放大(碰撞半径 def.radius 不变;visScale 仅放大视觉)。
       //   v0.10.11:每个 Boss 独立 bossVisScale,让各 Boss 都约占屏 3/5(直径≈432)。
+      //   v0.14.1:精英怪也放大(eliteVisScale),让稀有精英更显眼有压迫感。
       if (def.boss) r = r * (def.bossVisScale || G.Config.BOSS.bossScale || 1);
+      else if (def.elite) r = r * (def.eliteVisScale || 1.4);
 
       ctx.save();
       ctx.translate(a.x, a.y);
@@ -1399,7 +1401,7 @@
       // 拖尾
       if (b.trail.length > 1) {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.4; ctx.lineCap = 'round';
+        ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.8; ctx.lineCap = 'round';
         ctx.globalAlpha = 0.35;
         ctx.beginPath(); ctx.moveTo(b.trail[0].x, b.trail[0].y);
         for (var i = 1; i < b.trail.length; i++) ctx.lineTo(b.trail[i].x, b.trail[i].y);
@@ -1415,7 +1417,7 @@
       var bkey = ebulletKey(b);
       var etex = getEBulletTex(bkey);
       if (etex) {
-        var bs = br * (b.isBoss ? 5.2 : 3.8);   // v0.10.14:裁剪主体后无需放大弥补外壳,尺寸回归正常
+        var bs = br * (b.isBoss ? 6.4 : 4.8);   // v0.14.1:敌弹放大(3.8→4.8 / Boss 5.2→6.4)更清楚易辨
         ctx.globalCompositeOperation = 'source-over';   // 彻底复位(拖尾段的 lighter 残留会致糊白)
         ctx.globalAlpha = 1;
         // v0.10.14:去掉外辉光(那是"透明外壳"视觉感来源);贴图本体已含发光,source-over 干净画即可
@@ -1483,8 +1485,8 @@
         { scale: 1.00, glow: '#5ad1ff', gR: 0.45, gA: 0.34, tw: 1.7, ta: 0.55 },  // Lv1 脉冲激光(青)
         { scale: 1.18, glow: '#7df0c0', gR: 0.45, gA: 0.34, tw: 1.7, ta: 0.55 },  // Lv2 双联激光(绿)
         { scale: 1.40, glow: '#c77dff', gR: 0.40, gA: 0.26, tw: 1.4, ta: 0.40 },  // Lv3 等离子炮(紫)
-        { scale: 1.65, glow: '#ffd166', gR: 0.48, gA: 0.36, tw: 1.5, ta: 0.45 },  // Lv4 散射波(金)
-        { scale: 2.10, glow: '#ff5d8f', gR: 0.55, gA: 0.40, tw: 1.6, ta: 0.50 },  // Lv5 量子湮灭(粉)
+        { scale: 1.62, glow: '#ffd166', gR: 0.42, gA: 0.26, tw: 1.2, ta: 0.34 },  // Lv4 散射波(金):三向扇形,降拖尾/光晕防三条粗线交叉糊
+        { scale: 1.80, glow: '#ff5d8f', gR: 0.44, gA: 0.30, tw: 1.3, ta: 0.38 },  // Lv5 量子湮灭(粉):尺寸收 2.10→1.80,光晕/拖尾克制防单弹过炸
       ];
       var ld = LVL[wlvl - 1];
       var isLv5 = wlvl === 5;
@@ -1518,7 +1520,7 @@
         //   Lv1/2 调亮以强化前期色彩,Lv5 仍叠白心。
         ctx.globalCompositeOperation = 'lighter';
         drawGlow(ctx, glowColor, b.x, b.y, bs * ld.gR, ld.gA);
-        if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.28, 0.35);
+        if (isLv5) drawGlow(ctx, '#fff', b.x, b.y, bs * 0.22, 0.20);   // v0.14.1:白心减弱(0.35→0.20)防 Lv5 过炸
         // 贴图本体:source-over 干净画(关键——lighter 会把贴图漂白糊成方块)。
         // v0.13.2:按贴图自身宽高比绘制(贴图已是紧裁的长条形,非正方形)——
         //   bs 作为高度基准,宽度按贴图比例 bw=bs*aspect,主体填满绘制区不再糊成方块。

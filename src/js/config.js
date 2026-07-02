@@ -80,7 +80,7 @@
       t4: { name: '幽灵',   tier: 4, hp: 5,   score: 150,  coin: 25,  radius: 26, speed: 78,  spawnWeight: 10, color: '#c77dff', behavior: 'blink',   // 受击概率闪现回避
             fire: { pattern: 'spiral', every: 0.7, count: 2, spiralStep: 0.5, speed: 240, telegraph: 0 } },  // 闪现时双臂慢螺旋
       t5: { name: '精英',   tier: 5, hp: 20,  score: 300,  coin: 60,  radius: 40, speed: 60,  spawnWeight: 5,  color: '#ff8a3d', behavior: 'spiral' },    // 螺旋移动 + 周期冲刺
-      t6: { name: 'Boss',   tier: 6, hp: 550, score: 1500, coin: 300, radius: 115, speed: 38,  spawnWeight: 0,  color: '#ff3d6e', behavior: null, boss: true, bossVisScale: 1.88,   // 固定位 + 三阶段弹幕(v0.13 spawnWeight 2→0:Boss 不入随机刷新池,只由阈值触发,根除与触发 Boss 重叠)
+      t6: { name: 'Boss',   tier: 6, hp: 550, score: 1500, coin: 300, radius: 115, speed: 38,  spawnWeight: 0,  color: '#ff3d6e', behavior: null, boss: true, bossVisScale: 2.20,   // 固定位 + 三阶段弹幕(v0.13 spawnWeight 2→0;v0.14.1 1.88→2.20 更大压迫)
             fire: { stages: {
               1: { pattern: 'aimed',  every: 2.2, count: 3, spread: 0.22, speed: 300, telegraph: 0.5 },
               2: { pattern: 'spiral', every: 0.22, count: 3, spiralStep: 0.4, speed: 270, telegraph: 0 },
@@ -96,13 +96,13 @@
       t7: { name: '撕裂者', tier: 7, hp: 28,  score: 400,  coin: 70,  radius: 30, speed: 64,  spawnWeight: 3,  color: '#ff4d6d', behavior: 'dash' },      // 预警→锁定方向直线突进(可读可躲)
       t8: { name: '守卫者', tier: 7, hp: 40,  score: 500,  coin: 90,  radius: 32, speed: 46,  spawnWeight: 3,  color: '#ff8c42', behavior: 'gunner',           // 周期朝飞船发射瞄准敌弹
             fire: { pattern: 'aimed', every: 2.6, count: 3, spread: 0.24, speed: 320, telegraph: 0.55 } },
-      t9: { name: '钢铁巨像', tier: 8, hp: 1400, score: 4000, coin: 600, radius: 135, speed: 30, spawnWeight: 0, color: '#9fb4c8', behavior: null, boss: true, bossVisScale: 1.60,   // 中 Boss·固定位三阶段弹幕(v0.12 血量 500→1400)
+      t9: { name: '钢铁巨像', tier: 8, hp: 1400, score: 4000, coin: 600, radius: 135, speed: 30, spawnWeight: 0, color: '#9fb4c8', behavior: null, boss: true, bossVisScale: 1.88,   // 中 Boss·固定位三阶段弹幕(v0.12 血量 500→1400;v0.14.1 1.60→1.88)
             fire: { stages: {
               1: { pattern: 'aimed',  every: 1.8, count: 3, spread: 0.20, speed: 330, telegraph: 0.45 },
               2: { pattern: 'spiral', every: 0.16, count: 3, spiralStep: 0.34, speed: 280, telegraph: 0 },
               3: { pattern: 'ring',    every: 2.2, count: 18, speed: 250, telegraph: 0 },
             } } },
-      t10: { name: '虚空吞噬者', tier: 9, hp: 2800, score: 12000, coin: 1500, radius: 155, speed: 26, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true, bossVisScale: 1.39,   // 终 Boss·固定位三阶段密集弹幕 + 召唤(v0.12 血量 1200→2800)
+      t10: { name: '虚空吞噬者', tier: 9, hp: 2800, score: 12000, coin: 1500, radius: 155, speed: 26, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true, bossVisScale: 1.62,   // 终 Boss·固定位三阶段密集弹幕 + 召唤(v0.12 血量 1200→2800;v0.14.1 1.39→1.62)
             summonType: 't2', summonCount: 3,     // 阶段≥2 召唤飞翼(沿用 _bossSummon,override 全局 summonType/Count)
             fire: { stages: {
               1: { pattern: 'spiral', every: 0.13, count: 4, spiralStep: 0.28, speed: 300, telegraph: 0 },   // 四臂螺旋
@@ -133,31 +133,31 @@
              fire: { pattern: 'spiral', every: 0.35, count: 3, spiralStep: 0.38, speed: 250, telegraph: 0 } },
       // v0.10.15:5 新 Boss(更高阶,各配一个鲜明机制 mechanism)。bossVisScale 让直径≈432 占屏 3/5。
       //   mechanism: shield 召唤护盾 / summon 召唤仆从 / absorb 吸收伤害 / wave 位移冲击波。
-      'boss-titan': { name: '泰坦战舰', tier: 8, hp: 2200, score: 6000, coin: 800, radius: 115, speed: 30, spawnWeight: 0, color: '#5ad1ff', behavior: null, boss: true, bossVisScale: 1.88, mechanism: 'shield', shield: 400,
+      'boss-titan': { name: '泰坦战舰', tier: 8, hp: 2200, score: 6000, coin: 800, radius: 115, speed: 30, spawnWeight: 0, color: '#5ad1ff', behavior: null, boss: true, bossVisScale: 2.20, mechanism: 'shield', shield: 400,   // v0.14.1:1.88→2.20
         fire: { stages: {
           1: { pattern: 'aimed',  every: 2.0, count: 3, spread: 0.22, speed: 320, telegraph: 0.5 },
           2: { pattern: 'aimed',  every: 1.4, count: 4, spread: 0.28, speed: 340, telegraph: 0.45 },
           3: { pattern: 'ring',   every: 2.2, count: 18, speed: 280, telegraph: 0 },
         } } },
-      'boss-hydra': { name: '九头蛇母舰', tier: 9, hp: 2700, score: 8000, coin: 1000, radius: 135, speed: 28, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true, bossVisScale: 1.60, mechanism: 'summon', summonType: 't7', summonCount: 3,
+      'boss-hydra': { name: '九头蛇母舰', tier: 9, hp: 2700, score: 8000, coin: 1000, radius: 135, speed: 28, spawnWeight: 0, color: '#b14dff', behavior: null, boss: true, bossVisScale: 1.88, mechanism: 'summon', summonType: 't7', summonCount: 3,   // v0.14.1:1.60→1.88
         fire: { stages: {
           1: { pattern: 'spiral', every: 0.22, count: 3, spiralStep: 0.4, speed: 290, telegraph: 0 },
           2: { pattern: 'spiral', every: 0.18, count: 4, spiralStep: 0.34, speed: 310, telegraph: 0 },
           3: { pattern: 'ring',   every: 2.0, count: 20, speed: 300, telegraph: 0 },
         } } },
-      'boss-crystall': { name: '晶体巨核', tier: 9, hp: 3300, score: 10000, coin: 1200, radius: 155, speed: 24, spawnWeight: 0, color: '#5affb0', behavior: null, boss: true, bossVisScale: 1.39, mechanism: 'absorb',
+      'boss-crystall': { name: '晶体巨核', tier: 9, hp: 3300, score: 10000, coin: 1200, radius: 155, speed: 24, spawnWeight: 0, color: '#5affb0', behavior: null, boss: true, bossVisScale: 1.62, mechanism: 'absorb',   // v0.14.1:1.39→1.62
         fire: { stages: {
           1: { pattern: 'ring',   every: 2.5, count: 16, speed: 260, telegraph: 0 },
           2: { pattern: 'spiral', every: 0.16, count: 3, spiralStep: 0.34, speed: 280, telegraph: 0 },
           3: { pattern: 'ring',   every: 1.8, count: 22, speed: 290, telegraph: 0 },
         } } },
-      'boss-maw': { name: '虚空巨口', tier: 10, hp: 4000, score: 14000, coin: 1500, radius: 140, speed: 22, spawnWeight: 0, color: '#ff5d8f', behavior: null, boss: true, bossVisScale: 1.55, mechanism: 'wave',
+      'boss-maw': { name: '虚空巨口', tier: 10, hp: 4000, score: 14000, coin: 1500, radius: 140, speed: 22, spawnWeight: 0, color: '#ff5d8f', behavior: null, boss: true, bossVisScale: 1.82, mechanism: 'wave',   // v0.14.1:1.55→1.82
         fire: { stages: {
           1: { pattern: 'spiral', every: 0.20, count: 4, spiralStep: 0.30, speed: 300, telegraph: 0 },
           2: { pattern: 'wave',  every: 3.0, count: 24, speed: 200, telegraph: 0.8 },
           3: { pattern: 'ring',   every: 1.6, count: 24, speed: 320, telegraph: 0 },
         } } },
-      'boss-overlord': { name: '霸主中枢', tier: 10, hp: 5000, score: 20000, coin: 2000, radius: 155, speed: 20, spawnWeight: 0, color: '#ffd166', behavior: null, boss: true, bossVisScale: 1.45, mechanism: 'summon', shield: 600, summonType: 't8', summonCount: 2,
+      'boss-overlord': { name: '霸主中枢', tier: 10, hp: 5000, score: 20000, coin: 2000, radius: 155, speed: 20, spawnWeight: 0, color: '#ffd166', behavior: null, boss: true, bossVisScale: 1.70, mechanism: 'summon', shield: 600, summonType: 't8', summonCount: 2,   // v0.14.1:1.45→1.70
         fire: { stages: {
           1: { pattern: 'aimed',  every: 1.6, count: 4, spread: 0.24, speed: 340, telegraph: 0.45 },
           2: { pattern: 'spiral', every: 0.14, count: 5, spiralStep: 0.28, speed: 320, telegraph: 0 },
@@ -166,15 +166,15 @@
       // v0.13:5 个精英级怪物(血量/体型/机制均高于普通怪,稀有刷新)。tier 5-6,低 spawnWeight。
       //   每个独有机制:bulwark 回充护盾 / splitter 死亡分裂 / lancer 横扫激光 /
       //   carrier 召唤蜂群 / juggernaut 预警冲撞。攻击弹复用已规划贴图(见 §3.5/3.7)。
-      'elite-bulwark': { name: '堡垒巨兽', tier: 5, hp: 60,  score: 600,  coin: 120, radius: 48, speed: 36, spawnWeight: 3,  color: '#ff8c42', behavior: null, elite: true, mechanism: 'shield', shield: 80, shieldRegen: 4.0,
+      'elite-bulwark': { name: '堡垒巨兽', tier: 5, hp: 60,  score: 600,  coin: 120, radius: 48, speed: 36, spawnWeight: 3,  color: '#ff8c42', behavior: null, elite: true, eliteVisScale: 1.4, mechanism: 'shield', shield: 80, shieldRegen: 4.0,
         fire: { pattern: 'fan', every: 2.8, count: 5, spread: 0.7, speed: 280, telegraph: 0.55, bulletTex: 'ebullet-boss' } },   // 重弹宽扇(用 boss 重弹图)
-      'elite-splitter': { name: '裂殖母体', tier: 5, hp: 45,  score: 500,  coin: 100, radius: 44, speed: 40, spawnWeight: 3,  color: '#b14dff', behavior: null, elite: true, mechanism: 'split', splitType: 't13', splitCount: 3,
+      'elite-splitter': { name: '裂殖母体', tier: 5, hp: 45,  score: 500,  coin: 100, radius: 44, speed: 40, spawnWeight: 3,  color: '#b14dff', behavior: null, elite: true, eliteVisScale: 1.4, mechanism: 'split', splitType: 't13', splitCount: 3,
         fire: { pattern: 'ring', every: 3.0, count: 10, speed: 240, telegraph: 0.4 } },   // 环形弹幕(死亡再分裂 3 只小怪)
-      'elite-lancer': { name: '光矛猎手', tier: 6, hp: 50,  score: 700,  coin: 140, radius: 42, speed: 0,  spawnWeight: 2,  color: '#ff4dd2', behavior: 'hover', elite: true, mechanism: 'lasersweep',
+      'elite-lancer': { name: '光矛猎手', tier: 6, hp: 50,  score: 700,  coin: 140, radius: 42, speed: 0,  spawnWeight: 2,  color: '#ff4dd2', behavior: 'hover', elite: true, eliteVisScale: 1.4, mechanism: 'lasersweep',
         fire: { pattern: 'lasersweep', every: 3.5, charge: 1.0, sweepDur: 1.2, beamLen: 900, beamWidth: 14, speed: 0, telegraph: 0, count: 0 } },   // 悬停固定 + 周期横扫激光束
-      'elite-carrier': { name: '蜂群母舰', tier: 6, hp: 55,  score: 750,  coin: 150, radius: 50, speed: 28, spawnWeight: 2,  color: '#ffd166', behavior: null, elite: true, mechanism: 'summon', summonType: 'drone-bee', summonCount: 3, summonEvery: 4.5,
+      'elite-carrier': { name: '蜂群母舰', tier: 6, hp: 55,  score: 750,  coin: 150, radius: 50, speed: 28, spawnWeight: 2,  color: '#ffd166', behavior: null, elite: true, eliteVisScale: 1.4, mechanism: 'summon', summonType: 'drone-bee', summonCount: 3, summonEvery: 4.5,
         fire: { pattern: 'spiral', every: 0.5, count: 2, spiralStep: 0.5, speed: 240, telegraph: 0 } },   // 螺旋弹 + 周期召唤蜂群
-      'elite-juggernaut': { name: '重装冲锋者', tier: 6, hp: 70,  score: 800,  coin: 160, radius: 52, speed: 50, spawnWeight: 2,  color: '#ff3d6e', behavior: 'dash', elite: true },   // 预警→高速冲撞(复用 t7 dash 行为,体型血量更大)
+      'elite-juggernaut': { name: '重装冲锋者', tier: 6, hp: 70,  score: 800,  coin: 160, radius: 52, speed: 50, spawnWeight: 2,  color: '#ff3d6e', behavior: 'dash', elite: true, eliteVisScale: 1.4 },   // 预警→高速冲撞(复用 t7 dash 行为,体型血量更大;v0.14.1 +eliteVisScale)
       // v0.13:小蜜蜂无人机(t17 蜂巢炮台 / elite-carrier 召唤的仆从实体)。不入刷新池(spawnWeight:0),
       //   只由召唤生成。小型快速下冲,本体撞击威胁。type 名即贴图名(drone-bee.png)。
       'drone-bee': { name: '蜂群无人机', tier: 2, hp: 2,  score: 15,  coin: 4,   radius: 16, speed: 120, spawnWeight: 0, color: '#ffd166', behavior: null },
