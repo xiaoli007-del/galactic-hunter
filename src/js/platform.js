@@ -186,6 +186,36 @@
         src.connect(g); g.connect(ctx.destination);
         src.start(t0); src.stop(t0 + dur);
       },
+      // v0.14:带滤波的噪声爆裂(技能音核心)。filterType='lowpass'/'highpass'/'bandpass',
+      //   freq=截止/中心频率,Q=共振(越高越"啸叫/嗡嗡")。用于:火(低通闷燃)/冰(带通脆裂)/
+      //   电(高通滋滋)。dur/vol 同 noise;freq 为 0 时不加滤波(等同 noise)。
+      noiseFiltered: function (dur, vol, filterType, freq, Q) {
+        if (!this._enabled) return;
+        var ctx = this._ctxGet();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+        var t0 = ctx.currentTime;
+        var n = Math.floor(ctx.sampleRate * dur);
+        var buf = ctx.createBuffer(1, n, ctx.sampleRate);
+        var data = buf.getChannelData(0);
+        for (var i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+        var src = ctx.createBufferSource(); src.buffer = buf;
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(vol == null ? 0.16 : vol, t0);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        var node = src;
+        if (freq) {
+          var f = ctx.createBiquadFilter();
+          f.type = filterType || 'lowpass';
+          f.frequency.value = freq;
+          f.Q.value = Q == null ? 1 : Q;
+          src.connect(f); f.connect(g);
+        } else {
+          src.connect(g);
+        }
+        g.connect(ctx.destination);
+        src.start(t0); src.stop(t0 + dur);
+      },
     },
   };
 

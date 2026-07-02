@@ -341,7 +341,7 @@
     //   spread(双/三/四发)覆盖武器弹道数;damageMul(火焰)放大单发;pierce(激光)加贯穿层;
     //   技能弹道色覆盖武器色。无技能时用武器默认。技能持久,直到拾取下一个胶囊。
     fire: function (w) {
-      Snd && Snd.play('fire');
+      Snd && Snd.play('fire', { level: this.weaponLevel });   // v0.14:出膛低频随武器等级变化
       var a = this.ship.aimAngle;
       var sk = this.activeSkill ? C.SKILLS[this.activeSkill] : null;
       var n = (sk && sk.spread) ? sk.spread : w.spread;   // 技能弹道数覆盖武器
@@ -512,6 +512,8 @@
           if (E.circleHit(b, a)) {
             if (!b.hit(a)) continue;          // 已命中过则跳过
             this._applyBulletHit(b, a);
+            // v0.14:按技能弹类型播命中音(冰/火/电/激光/散射各专属,普通弹清脆金属撞击)
+            if (Snd) Snd.play(this._hitSound(b));
             if (a.dead) { this.killAlien(a); Snd && Snd.play('kill'); }
             // v0.5 闪电:命中后连锁到附近 N 只怪(部分伤害),用子弹色画电弧
             if (b.skill && b.skill.chain) this._chainLightning(b, a);
@@ -598,6 +600,17 @@
           a.burnTick = 0;
         }
       }
+    },
+
+    // v0.14:按子弹技能 fx 选命中音效名。无技能=普通金属撞击。
+    _hitSound: function (b) {
+      var fx = b.skill && b.skill.fx;
+      if (fx === 'ice') return 'hitIce';
+      if (fx === 'fire') return 'hitFire';
+      if (fx === 'bolt') return 'hitBolt';
+      if (fx === 'laser') return 'hitLaser';
+      if (fx === 'multi') return 'hitMulti';
+      return 'hitNormal';
     },
 
     // v0.5 闪电连锁:从命中怪向附近 chain 只怪各造成 chainDmgMul×伤害,画电弧 + 飘字

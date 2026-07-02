@@ -96,15 +96,27 @@ assert(Game.killCount >= 0, '击杀计数 ' + Game.killCount);
 
 console.log('\n[3c] 音效(无 AudioContext 应静默 no-op,不抛异常)');
 G.Sound.init();
-// 遍历全部命名音效:node 无 AudioContext,Platform.audio.tone/noise 应静默返回
-['fire', 'kill', 'coin', 'upgrade', 'hit', 'boss', 'bossKill', 'reflect'].forEach(function (n) {
+// 遍历全部命名音效:node 无 AudioContext,Platform.audio.tone/noise/noiseFiltered 应静默返回
+['fire', 'kill', 'coin', 'upgrade', 'hit', 'boss', 'bossKill', 'reflect',
+ 'hitIce', 'hitFire', 'hitBolt', 'hitLaser', 'hitMulti', 'hitNormal'].forEach(function (n) {
   G.Sound.play(n);
 });
+// v0.14:noiseFiltered 原语 + play 第二参数(opt)安全
+G.Platform.audio.noiseFiltered(0.1, 0.1, 'lowpass', 500, 1);
+G.Platform.audio.noiseFiltered(0.1, 0.1);   // freq=0 不加滤波(等同 noise)
+G.Sound.play('fire', { level: 3 });
 // 禁用开关
 G.Platform.audio.setEnabled(false);
 G.Sound.play('fire');
 G.Platform.audio.setEnabled(true);
 assert(true, '音效系统在无 AudioContext 环境安全运行');
+// v0.14:_hitSound 按 skill.fx 路由
+assert(Game._hitSound({ skill: null }) === 'hitNormal', '无技能→普通命中音');
+assert(Game._hitSound({ skill: { fx: 'ice' } }) === 'hitIce', '冰冻弹→hitIce');
+assert(Game._hitSound({ skill: { fx: 'fire' } }) === 'hitFire', '火焰弹→hitFire');
+assert(Game._hitSound({ skill: { fx: 'bolt' } }) === 'hitBolt', '闪电弹→hitBolt');
+assert(Game._hitSound({ skill: { fx: 'laser' } }) === 'hitLaser', '激光弹→hitLaser');
+assert(Game._hitSound({ skill: { fx: 'multi' } }) === 'hitMulti', '散射弹→hitMulti');
 
 console.log('\n[3d] v0.10.9 BGM 多曲切换(无 Audio 静默 no-op,验证索引/持久化/环绕)');
 assert(typeof G.Sound.bgmTrackCount === 'function', 'bgmTrackCount 接口存在');
