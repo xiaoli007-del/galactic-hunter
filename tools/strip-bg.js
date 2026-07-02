@@ -11,6 +11,7 @@
  *   node tools/strip-bg.js                 # 处理 _raw/ 全部
  *   node tools/strip-bg.js ship1           # 只处理 ship1
  *   node tools/strip-bg.js ship1 40        # 指定容差 40(默认 36;抠不净调大,吃太多主体调小)
+ *   node tools/strip-bg.js bullet2 6 close # 深色主体蛀洞修复(闭运算填被误抠的洞,默认关)
  *
  * 依赖 canvas 包(项目已装)。无依赖外网。
  */
@@ -37,6 +38,88 @@ function colorDist(r1, g1, b1, r2, g2, b2) {
   return Math.sqrt(dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11);
 }
 
+// 形态学闭运算(膨胀 r 次 → 腐蚀 r 次),填弹体被误抠的细小蛀洞与窄缝。
+//   只改 alpha:把被实体包围、<2r 的洞填实;外部轮廓先膨胀再腐蚀回基本不变(尖角略圆)。
+//   填出的像素 RGB 用就近实体色(取邻域不透明像素均值),避免纯黑填进弹体。
+function morphClose(d, w, h, r) {
+  var n = w * h;
+  var mask = new Uint8Array(n);
+  for (var i = 0; i < n; i++) mask[i] = d[i * 4 + 3] > 128 ? 1 : 0;
+  function dilate(src) {
+    var dst = new Uint8Array(n);
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+      var p = y * w + x, v = 0;
+      if (src[p] || (x > 0 && src[p - 1]) || (x < w - 1 && src[p + 1]) || (y > 0 && src[p - w]) || (y < h - 1 && src[p + w])) v = 1;
+      dst[p] = v;
+    }
+    return dst;
+  }
+  function erode(src) {
+    var dst = new Uint8Array(n);
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+      var p = y * w + x;
+      var v = src[p] && (x === 0 || src[p - 1]) && (x === w - 1 || src[p + 1]) && (y === 0 || src[p - w]) && (y === h - 1 || src[p + w]) ? 1 : 0;
+      dst[p] = v;
+    }
+    return dst;
+  }
+  var m = mask;
+  for (var k = 0; k < r; k++) m = dilate(m);
+  for (var k2 = 0; k2 < r; k2++) m = erode(m);
+  // 闭运算新增的实体像素(原mask=0,闭后=1)→填实 alpha,RGB 取邻域均值
+  for (var i2 = 0; i2 < n; i2++) {
+    if (m[i2] && !mask[i2]) {
+      var x = i2 % w, y = (i2 - x) / w, rs = 0, gs = 0, bs = 0, cnt = 0;
+      for (var dy = -2; dy <= 2 && cnt === 0; dy++) for (var dx = -2; dx <= 2; dx++) {
+        var nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        var np = ny * w + nx;
+        if (mask[np]) { var ni = np * 4; rs = d[ni]; gs = d[ni + 1]; bs = d[ni + 2]; cnt = 1; break; }
+      }
+      if (cnt) { d[i2 * 4] = rs; d[i2 * 4 + 1] = gs; d[i2 * 4 + 2] = bs; d[i2 * 4 + 3] = 255; }
+    }
+  }
+}
+
+// 内部空洞填充:见 processOne 里的注释。alphaThresh 以下视为"纯透明",从四边
+//   flood 扩散标记外部背景(阈值要小,只用纯透明扩散——否则半透明羽化带会成桥梁
+//   让 flood 渗进主体把内部洞也标成外部)。未标记到的纯透明像素=内部洞→alpha 填回 255。
+function fillInteriorHoles(d, w, h, alphaThresh) {
+  var n = w * h;
+  var ext = new Uint8Array(n); // 1=外部背景(连通边缘的纯透明)
+  var stack = [];
+  // 从四边的纯透明像素入栈
+  for (var x = 0; x < w; x++) {
+    if (d[(0 * w + x) * 4 + 3] < alphaThresh) { ext[0 * w + x] = 1; stack.push(0 * w + x); }
+    if (d[((h - 1) * w + x) * 4 + 3] < alphaThresh) { ext[(h - 1) * w + x] = 1; stack.push((h - 1) * w + x); }
+  }
+  for (var y = 0; y < h; y++) {
+    if (d[(y * w + 0) * 4 + 3] < alphaThresh) { ext[y * w + 0] = 1; stack.push(y * w + 0); }
+    if (d[(y * w + (w - 1)) * 4 + 3] < alphaThresh) { ext[y * w + (w - 1)] = 1; stack.push(y * w + (w - 1)); }
+  }
+  // 4 连通 BFS 扩散(只沿纯透明)
+  while (stack.length) {
+    var p = stack.pop();
+    var px = p % w, py = (p - px) / w;
+    var nb = [px > 0 ? p - 1 : -1, px < w - 1 ? p + 1 : -1, py > 0 ? p - w : -1, py < h - 1 ? p + w : -1];
+    for (var k = 0; k < 4; k++) {
+      var q = nb[k];
+      if (q < 0 || ext[q]) continue;
+      if (d[q * 4 + 3] < alphaThresh) { ext[q] = 1; stack.push(q); }
+    }
+  }
+  // 未标记为外部的纯透明像素 = 内部洞 → 填回不透明
+  // (RGB 未动,深色金属洞的 RGB 本就是弹体色,补全后与周围一致)
+  var filled = 0;
+  for (var i = 0; i < n; i++) {
+    if (!ext[i] && d[i * 4 + 3] < alphaThresh) {
+      d[i * 4 + 3] = 255;
+      filled++;
+    }
+  }
+  return filled;
+}
+
 // 采样四角,取出现最多的色作为背景键(各角取小区域均值,再四角互相取最接近的主体)
 function detectBg(data, w, h) {
   var corners = [];
@@ -56,7 +139,7 @@ function detectBg(data, w, h) {
   return { bg: avg, uniform: maxVar < 40 };
 }
 
-async function processOne(file, tol) {
+async function processOne(file, tol, doFill) {
   var src = path.join(RAW_DIR, file);
   var out = path.join(OUT_DIR, file);
   var img = await loadImageSafe(src);
@@ -80,6 +163,20 @@ async function processOne(file, tol) {
       d[i + 3] = Math.round(255 * (dist - tol) / feather);
     }
   }
+
+  if (doFill) {
+    // v0.13.3:蛀洞修复(可选,命令行加 "close" 启用)——黑底深色主体(如深色金属
+    //   弹体)的暗部距纯黑常 <容差,被误抠成透明,弹体布满"虫蛀"空洞。两步修复:
+    //   ① fillInteriorHoles:从四边纯透明 flood 标记外部背景,未标记的透明像素=被
+    //      主体包围的内部洞,填回不透明(对孤立洞有效)。
+    //   ② morphClose(r=2):对"洞连通外部"的千疮百孔弹体,膨胀填窄缝/细洞、腐蚀修回
+    //      轮廓,弹体变完整(会填掉 <4px 的细缝)。
+    //   默认关闭:对已抠干净的亮色图(飞船/亮色怪)闭运算会填掉合法深色凹陷(推进口/
+    //      窗口),改变外观,故仅在深色主体抠不净时按需开启。
+    fillInteriorHoles(d, w, h, 10);
+    morphClose(d, w, h, 2);
+  }
+
   ctx.putImageData(imgData, 0, 0);
 
   // v0.11.1:裁剪到主体边界(alpha>40 的 bounding box),去四周半透明光晕羽化。
@@ -123,21 +220,26 @@ async function processOne(file, tol) {
 (async () => {
   if (!fs.existsSync(RAW_DIR)) { console.error('无 _raw 目录'); process.exit(1); }
   var files = fs.readdirSync(RAW_DIR).filter(function (f) { return /\.png$/i.test(f); });
-  var arg = process.argv[2];
-  var tol = parseInt(process.argv[3], 10) || DEFAULT_TOL;
-  if (arg && !/^\d+$/.test(arg)) {
-    // 按名称过滤
-    files = files.filter(function (f) { return f.toLowerCase().indexOf(arg.toLowerCase()) >= 0; });
-  } else if (arg && /^\d+$/.test(arg)) {
-    tol = parseInt(arg, 10);   // node strip-bg.js 40 → 全部,容差40
+  // 用法:node strip-bg.js [name] [tol] [close]
+  //   name=过滤名(或省略=全部); tol=容差(默认36); close=启用蛀洞修复(默认关)
+  //   例:node strip-bg.js bullet2 6 close   node strip-bg.js 40   node strip-bg.js ship1
+  var args = process.argv.slice(2);
+  var nameArg = null, tol = DEFAULT_TOL, doFill = false;
+  for (var a = 0; a < args.length; a++) {
+    if (/^\d+$/.test(args[a])) tol = parseInt(args[a], 10);
+    else if (args[a].toLowerCase() === 'close') doFill = true;
+    else nameArg = args[a];
+  }
+  if (nameArg) {
+    files = files.filter(function (f) { return f.toLowerCase().indexOf(nameArg.toLowerCase()) >= 0; });
   }
   if (!files.length) { console.error(' _raw/ 里没有 PNG。把生图原图放到:\n  ' + RAW_DIR); process.exit(1); }
-  console.log('处理 ' + files.length + ' 张,容差 ' + tol + '\n');
+  console.log('处理 ' + files.length + ' 张,容差 ' + tol + (doFill ? ',蛀洞修复开' : '') + '\n');
   var fail = 0;
   for (var i = 0; i < files.length; i++) {
-    try { await processOne(files[i], tol); }
+    try { await processOne(files[i], tol, doFill); }
     catch (e) { console.error('  ✗ ' + files[i] + ': ' + e.message); fail++; }
   }
-  console.log('\n完成 ' + (files.length - fail) + '/' + files.length + '。运行游戏看效果,抠不净加容差重试。');
+  console.log('\n完成 ' + (files.length - fail) + '/' + files.length + '。运行游戏看效果,抠不净加容差重试,深色主体蛀洞加 close。');
   process.exit(fail ? 1 : 0);
 })().catch(function (e) { console.error('ERR', e); process.exit(1); });
